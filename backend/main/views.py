@@ -8,6 +8,7 @@ from django.db.models import Count
 from collections import Counter
 
 from .models import EmotionEntry, WeatherComparison
+from .geocoding_service import resolve_location
 from .weather_service import fetch_real_weather, REGION_CITY_MAP
 
 # 17 provinces coordinates and defaults
@@ -435,3 +436,29 @@ def history_api(request):
         })
         
     return JsonResponse(history_data, safe=False)
+
+
+def location_resolve_api(request):
+    """
+    GET /api/location/resolve/?lat=<latitude>&lng=<longitude>
+    Returns a readable Korean region name for browser coordinates.
+    """
+    if request.method != 'GET':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    lat_value = request.GET.get('lat')
+    lng_value = request.GET.get('lng')
+
+    if lat_value is None or lng_value is None:
+        return JsonResponse({"error": "Missing required query parameters (lat, lng)"}, status=400)
+
+    try:
+        lat = float(lat_value)
+        lng = float(lng_value)
+    except ValueError:
+        return JsonResponse({"error": "lat and lng must be valid numbers"}, status=400)
+
+    if not (33.0 <= lat <= 39.5 and 124.0 <= lng <= 132.0):
+        return JsonResponse({"error": "Coordinates are outside supported Korea bounds"}, status=400)
+
+    return JsonResponse(resolve_location(lat, lng))
