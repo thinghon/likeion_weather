@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import SideMenu from '../components/SideMenu'
 import { EMOTIONS } from '../data/mockData'
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
 export default function JournalPage() {
   const [logs, setLogs] = useState([])
 
@@ -19,7 +21,18 @@ export default function JournalPage() {
     }
   }, [])
 
-  const handleDelete = (indexToDelete) => {
+  const handleDelete = async (indexToDelete) => {
+    const target = logs[indexToDelete]
+
+    // 백엔드 id가 있으면 DELETE API 호출
+    if (target?.id) {
+      try {
+        await fetch(`${API_URL}/api/emotions/${target.id}/`, { method: 'DELETE' })
+      } catch (e) {
+        console.error('Failed to delete from server:', e)
+      }
+    }
+
     const updated = logs.filter((_, idx) => idx !== indexToDelete)
     setLogs(updated)
     localStorage.setItem('mwm_journal', JSON.stringify(updated))

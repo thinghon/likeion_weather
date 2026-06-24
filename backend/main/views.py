@@ -462,3 +462,41 @@ def location_resolve_api(request):
         return JsonResponse({"error": "Coordinates are outside supported Korea bounds"}, status=400)
 
     return JsonResponse(resolve_location(lat, lng))
+
+
+@csrf_exempt
+def emotion_detail_api(request, entry_id):
+    """
+    PATCH /api/emotions/<id>/ — 감정·코멘트 수정
+    DELETE /api/emotions/<id>/ — 기록 삭제
+    """
+    try:
+        entry = EmotionEntry.objects.get(id=entry_id)
+    except EmotionEntry.DoesNotExist:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    if request.method == 'PATCH':
+        try:
+            data = json.loads(request.body)
+            if 'emotion_type' in data:
+                if data['emotion_type'] not in ['sunny', 'cloudy', 'rainy', 'storm']:
+                    return JsonResponse({"error": "Invalid emotion type"}, status=400)
+                entry.emotion_type = data['emotion_type']
+            if 'comment' in data:
+                entry.comment = data['comment'][:50]
+            entry.save()
+            return JsonResponse({
+                "id": entry.id,
+                "region": entry.region,
+                "emotion": entry.emotion_type,
+                "comment": entry.comment,
+                "timestamp": int(entry.created_at.timestamp() * 1000)
+            })
+        except (json.JSONDecodeError, ValueError) as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+    elif request.method == 'DELETE':
+        entry.delete()
+        return JsonResponse({}, status=204)
+
+    return JsonResponse({"error": "Method not allowed"}, status=405)

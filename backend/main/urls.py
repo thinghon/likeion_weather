@@ -7,4 +7,5 @@ urlpatterns = [
     path('emotions/compare/', views.weather_compare_api, name='weather_compare_api'),
     path('emotions/history/', views.history_api, name='history_api'),
     path('location/resolve/', views.location_resolve_api, name='location_resolve_api'),
+    path('emotions/<int:entry_id>/', views.emotion_detail_api, name='emotion_detail_api'),
 ]
