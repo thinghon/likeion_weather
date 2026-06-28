@@ -34,10 +34,8 @@ function formatTime(ts) {
 export default function JournalPage() {
   const today = new Date()
   const navigate = useNavigate()
-  const { isLoggedIn } = useAuth()
-  const [bannerDismissed, setBannerDismissed] = useState(
-    () => sessionStorage.getItem('mwm_journal_banner_dismissed') === '1'
-  )
+  const { isLoggedIn, user } = useAuth()
+  const [bannerDismissed, setBannerDismissed] = useState(false)
   const [logs, setLogs] = useState([])
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const [selectedDay, setSelectedDay] = useState(null)
@@ -57,8 +55,13 @@ export default function JournalPage() {
   const month = currentDate.getMonth()
   const calDays = getCalendarDays(year, month)
 
+  // 로그인 상태에 따라 본인 기록만 필터
+  const visibleLogs = isLoggedIn && user
+    ? logs.filter(l => l.username === user.username)
+    : logs.filter(l => !l.username)
+
   // 날짜 → 로그 목록 (최신순)
-  const byDate = logs.reduce((acc, log) => {
+  const byDate = visibleLogs.reduce((acc, log) => {
     const key = log.date || toDateKey(...new Date(log.timestamp).toISOString().slice(0,10).split('-').map(Number))
     if (!acc[key]) acc[key] = []
     acc[key].push(log)
@@ -84,16 +87,18 @@ export default function JournalPage() {
     localStorage.setItem('mwm_journal', JSON.stringify(updated))
     // 상세 패널 업데이트
     if (selectedDay) {
-      const newEntries = updated.filter(l =>
-        (l.date || toDateKey(...new Date(l.timestamp).toISOString().slice(0,10).split('-').map(Number))) === selectedDay.key
-      )
+      const newEntries = updated.filter(l => {
+        const entryKey = l.date || toDateKey(...new Date(l.timestamp).toISOString().slice(0,10).split('-').map(Number))
+        const visible = isLoggedIn && user ? l.username === user.username : !l.username
+        return entryKey === selectedDay.key && visible
+      })
       setSelectedDay(prev => ({ ...prev, entries: newEntries }))
     }
     setConfirmDelete(null)
   }
 
   // 이달 통계
-  const monthLogs = logs.filter(l => {
+  const monthLogs = visibleLogs.filter(l => {
     const d = new Date(l.timestamp || Date.now())
     return d.getFullYear() === year && d.getMonth() === month
   })
@@ -113,10 +118,7 @@ export default function JournalPage() {
             <span>📱 지금 기록은 이 기기에만 저장돼요. 로그인하면 어디서든 확인할 수 있어요.</span>
             <div className="login-nudge-actions">
               <button className="login-nudge-cta" onClick={() => navigate('/login')}>로그인</button>
-              <button className="login-nudge-close" onClick={() => {
-                sessionStorage.setItem('mwm_journal_banner_dismissed', '1')
-                setBannerDismissed(true)
-              }}>✕</button>
+              <button className="login-nudge-close" onClick={() => setBannerDismissed(true)}>✕</button>
             </div>
           </div>
         </div>

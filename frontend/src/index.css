@@ -152,6 +152,35 @@ input {
   transition: background 0.15s, transform 0.15s;
 }
 
+.map-quick-fab {
+  position: fixed;
+  top: 20px;
+  left: 84px;
+  height: 52px;
+  padding: 0 18px;
+  border-radius: 26px;
+  background: #FFFBF7;
+  border: 1px solid #F0EAE2;
+  color: #D9700E;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 20px rgba(217, 112, 14, 0.18);
+  z-index: 20;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.map-quick-fab:hover {
+  background: #FFF3E8;
+  transform: scale(1.04);
+}
+
+.map-quick-fab:active {
+  transform: scale(0.96);
+}
+
 .map-auth-btn {
   position: fixed;
   top: 20px;
@@ -1826,6 +1855,24 @@ input {
   box-shadow: 0 4px 16px rgba(34, 197, 94, 0.04);
 }
 
+.compare-card.my-region-card {
+  border-color: #D9700E;
+  border-top: 4px solid #D9700E;
+  background: linear-gradient(#FFF7EE, #ffffff);
+  box-shadow: 0 6px 20px rgba(217, 112, 14, 0.12);
+}
+
+.my-region-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #D9700E;
+  background: #FFE9D2;
+  padding: 2px 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
 .compare-card-title {
   font-size: 16px;
   font-weight: 800;
@@ -1895,6 +1942,11 @@ input {
 .compare-status.diff {
   background: #FFFAF5;
   color: #6B4A1C;
+}
+
+.compare-status.nodata {
+  background: #F4F1EC;
+  color: #8A8073;
 }
 
 .no-results {

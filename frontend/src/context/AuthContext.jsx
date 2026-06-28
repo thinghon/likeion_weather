@@ -29,6 +29,8 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    // 마커 슬롯(mwm_entry / mwm_entry_<username>)은 신원별로 분리돼 있어 건드리지 않는다.
+    // 로그아웃하면 익명 슬롯을 다시 보게 되고, 로그인 마커는 그대로 보존된다.
     setIsLoggedIn(false)
     setUser(null)
     navigate('/')

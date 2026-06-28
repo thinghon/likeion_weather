@@ -147,6 +147,8 @@ function buildRegionRankings(isToday) {
       const emotion = isToday ? p.emotion : (WEEKLY_EMOTION[p.label] || p.emotion)
       return { region: p.label, emotion, score: SENTIMENT[emotion] }
     })
+    // 오늘 기록 없는 지역(감정 null)은 점수가 없으므로 순위에서 제외
+    .filter(r => r.emotion && SENTIMENT[r.emotion] !== undefined)
     .sort((a, b) => b.score - a.score)
 }
 

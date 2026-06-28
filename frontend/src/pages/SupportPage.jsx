@@ -31,8 +31,8 @@ const DATA_SOURCES = [
 const TECH_STACK = ["React", "Vite", "Django", "d3-geo", "React Router"];
 
 const DEVELOPERS = [
-  { name: "홍길동", email: "example1@email.com", emoji: "🦁" },
-  { name: "김철수", email: "example2@email.com", emoji: "🦁" },
+  { name: "박소호", email: "thgh0258@gmail.com", emoji: "🦁" },
+  { name: "이원찬", email: "wonchan@wonchan.net", emoji: "🦁" },
 ];
 
 export default function SupportPage() {

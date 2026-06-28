@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { HelpCircle } from 'lucide-react'
 import { EMOTIONS, COMPARE_COMMENTS } from '../data/mockData'
 import EmotionMarker from './EmotionMarker'
 
@@ -103,6 +104,7 @@ export default function WeatherDetailModal({ item, onClose }) {
   }, [hourly])
 
   const realEmo    = EMOTIONS[item.real_weather]    || EMOTIONS.sunny
+  const noData     = !item.emotion_weather
   const emoEmo     = EMOTIONS[item.emotion_weather] || EMOTIONS.sunny
   const commentText = COMPARE_COMMENTS[item.real_weather]?.[item.emotion_weather] ?? ''
 
@@ -175,19 +177,36 @@ export default function WeatherDetailModal({ item, onClose }) {
 
             <div className="wdm-compare-half">
               <span className="compare-label">감정 날씨</span>
-              <EmotionMarker type={item.emotion_weather} size={56} />
-              <span className="wdm-mood-label" style={{ color: emoEmo.text }}>사람들의 평균</span>
-              <span
-                className="compare-desc"
-                style={{ color: emoEmo.text, background: emoEmo.color, padding: '2px 8px', borderRadius: 6 }}
-              >
-                {emoEmo.label}
-              </span>
+              {noData ? (
+                <>
+                  <HelpCircle size={56} color="#B8AEA0" strokeWidth={1.6} />
+                  <span className="wdm-mood-label" style={{ color: '#9A8F80' }}>아직 기록 없음</span>
+                  <span
+                    className="compare-desc"
+                    style={{ color: '#8A8073', background: '#F4F1EC', padding: '2px 8px', borderRadius: 6 }}
+                  >
+                    데이터 없음
+                  </span>
+                </>
+              ) : (
+                <>
+                  <EmotionMarker type={item.emotion_weather} size={56} />
+                  <span className="wdm-mood-label" style={{ color: emoEmo.text }}>사람들의 평균</span>
+                  <span
+                    className="compare-desc"
+                    style={{ color: emoEmo.text, background: emoEmo.color, padding: '2px 8px', borderRadius: 6 }}
+                  >
+                    {emoEmo.label}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
-          <div className={`compare-status ${item.match ? 'match' : 'diff'}`}>
-            {commentText}
+          <div className={`compare-status ${noData ? 'nodata' : item.match ? 'match' : 'diff'}`}>
+            {noData
+              ? '아직 기록이 없어요 — 첫 감정 마크의 주인공이 되세요! 🌱'
+              : commentText}
           </div>
         </section>
       </div>

@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { geoMercator, geoPath } from 'd3-geo'
-import { X } from 'lucide-react'
+import { X, HelpCircle } from 'lucide-react'
 import { EMOTIONS, COMPARE_COMMENTS } from '../data/mockData'
+import { entryKey } from '../utils/api'
 
 const W = 800
 const H = 900
 const ZOOM_THRESHOLD = 2.5
 const MIN_SCALE = 1.5
-const MAX_SCALE = 8
+const MAX_SCALE = 14
 
 const GEO_URLS = [
   '/korea.json',
@@ -370,8 +371,41 @@ function WeatherCompareCard({ weather, weatherLoading, distribution }) {
 }
 
 // 지역 상세 우측 패널
-function RegionPanel({ regionName, onClose, weather, weatherLoading, userEntry }) {
+function RegionPanel({ regionName, onClose, noData, weather, weatherLoading, userEntry }) {
   const data = REGION_DATA[regionName]
+
+  // 오늘 기록 없는 지역 — '?' 빈 상태
+  if (noData) {
+    return (
+      <div
+        style={{
+          position: 'fixed', right: 0, top: 0,
+          width: '360px', height: '100vh',
+          background: '#FFFBF7',
+          boxShadow: '-4px 0 20px rgba(0,0,0,0.08)',
+          zIndex: 30, overflowY: 'auto', padding: '24px',
+          animation: 'slideInRight 0.3s ease',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+          <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1A0E00' }}>{regionName}</h2>
+          <button onClick={onClose} style={{ color: '#9A7040', padding: '4px', borderRadius: '6px', flexShrink: 0, marginTop: '2px' }}>
+            <X size={20} />
+          </button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '64px 16px', gap: '14px' }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#ECE7E0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <HelpCircle size={34} color="#9A8F80" strokeWidth={2.2} />
+          </div>
+          <p style={{ fontSize: '16px', fontWeight: 700, color: '#3D1A00' }}>아직 오늘 기록이 없어요</p>
+          <p style={{ fontSize: '13px', color: '#9A7040', lineHeight: 1.6 }}>
+            {regionName}의 첫 감정 마크를<br />남기는 주인공이 되어보세요 🌱
+          </p>
+        </div>
+      </div>
+    )
+  }
   if (!data) return null
 
   // 사용자 입력을 distribution·total에 반영
@@ -473,8 +507,9 @@ function RegionPanel({ regionName, onClose, weather, weatherLoading, userEntry }
 // 감정별 팝업
 function MarkPopup({ popup, onClose }) {
   const { mark, x, y } = popup
-  const emotion = EMOTIONS[mark.emotion]
-  const pin = PIN_COLORS[mark.emotion]
+  // 알 수 없는 감정이어도 크래시하지 않도록 폴백 (회색 '?')
+  const emotion = EMOTIONS[mark.emotion] || { label: '알 수 없음', Icon: HelpCircle }
+  const pin = PIN_COLORS[mark.emotion] || { fill: '#ECE7E0', stroke: '#C9BFB2', icon: '#9A8F80' }
 
   return (
     <div
@@ -640,13 +675,14 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks }) 
     setSelectedRegion(mark.label)
   }
 
-  const handleIndividualClick = (mark, e) => {
+  const handleIndividualClick = (mark, e, off = { dx: 0, dy: 0 }) => {
     if (dragMoved.current) return
     e.stopPropagation()
     const svg = svgRef.current
     const [projX, projY] = projection(mark.coordinates)
-    const viewBoxX = transform.x + projX * transform.scale
-    const viewBoxY = transform.y + projY * transform.scale
+    // 핀에 적용한 겹침 회피 오프셋만큼 팝업 위치도 보정
+    const viewBoxX = transform.x + projX * transform.scale + off.dx
+    const viewBoxY = transform.y + projY * transform.scale + off.dy
     const pt = svg.createSVGPoint()
     pt.x = viewBoxX; pt.y = viewBoxY
     const screenPt = pt.matrixTransform(svg.getScreenCTM())
@@ -655,6 +691,25 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks }) 
 
   const panelOpen = !!selectedRegion
   const individualAll = [...individualMarks, ...userMarks]
+
+  // 같은 좌표에 겹치는 마커는 작은 원형으로 흩뿌려(jitter) 둘 다 보이게 한다.
+  const coordKey = (c) => `${c[0].toFixed(3)},${c[1].toFixed(3)}`
+  const groupCounts = individualAll.reduce((acc, mk) => {
+    const k = coordKey(mk.coordinates)
+    acc[k] = (acc[k] || 0) + 1
+    return acc
+  }, {})
+  const groupSeen = {}
+  const markOffsets = individualAll.map(mk => {
+    const k = coordKey(mk.coordinates)
+    const total = groupCounts[k]
+    if (total <= 1) return { dx: 0, dy: 0 }
+    const i = groupSeen[k] || 0
+    groupSeen[k] = i + 1
+    const angle = (2 * Math.PI * i) / total
+    const radius = 16
+    return { dx: Math.cos(angle) * radius, dy: Math.sin(angle) * radius }
+  })
 
   return (
     <>
@@ -695,24 +750,35 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks }) 
             })}
 
             {/* 개인 마커 핀 (줌 인 시) */}
-            {transform.scale >= ZOOM_THRESHOLD && individualAll.map(mark => {
+            {transform.scale >= ZOOM_THRESHOLD && individualAll.map((mark, idx) => {
               const [px, py] = projection(mark.coordinates)
+              // 겹침 회피 오프셋(화면 px). 줌과 무관하게 일정한 간격이 되도록 scale로 나눈다.
+              const off = markOffsets[idx]
+              const ox = px + off.dx / transform.scale
+              const oy = py + off.dy / transform.scale
               const emo = EMOTIONS[mark.emotion]
               const pin = PIN_COLORS[mark.emotion]
+              // 알 수 없는 감정이면 크래시 대신 회색 '?' 핀으로 (방어)
+              const unknown = !emo || !pin
+              const pinFill = unknown ? '#ECE7E0' : pin.fill
+              const pinStroke = unknown ? '#C9BFB2' : pin.stroke
+              const iconColor = unknown ? '#9A8F80' : pin.icon
               const [pinW, pinH, iconSize] = [28, 36, 12]
               return (
-                <g key={mark.id} transform={`translate(${px},${py})`} style={{ cursor: 'pointer' }}
-                  onClick={e => { e.stopPropagation(); handleIndividualClick(mark, e) }}
+                <g key={mark.id} transform={`translate(${ox},${oy})`} style={{ cursor: 'pointer' }}
+                  onClick={e => { e.stopPropagation(); handleIndividualClick(mark, e, off) }}
                 >
                   <g transform={`scale(${1 / transform.scale})`}>
                     <svg x={-pinW / 2} y={-pinH} width={pinW} height={pinH} viewBox="0 0 32 40" overflow="visible">
                       <path
                         d="M16 0C7.163 0 0 7.163 0 16c0 10 16 24 16 24S32 26 32 16C32 7.163 24.837 0 16 0z"
-                        fill={pin.fill} stroke={pin.stroke} strokeWidth="1"
+                        fill={pinFill} stroke={pinStroke} strokeWidth="1"
                       />
                       <foreignObject x={16 - iconSize / 2} y={14 - iconSize / 2} width={iconSize} height={iconSize}>
                         <div xmlns="http://www.w3.org/1999/xhtml" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                          <emo.Icon size={iconSize} color={pin.icon} strokeWidth={1.5} />
+                          {unknown
+                            ? <HelpCircle size={iconSize} color={iconColor} strokeWidth={2.5} />
+                            : <emo.Icon size={iconSize} color={pin.icon} strokeWidth={1.5} />}
                         </div>
                       </foreignObject>
                     </svg>
@@ -724,6 +790,7 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks }) 
             {/* 시·도 pill 마커 (줌 아웃 시) — SVG 내부로 이동하여 transform 즉시 반영 */}
             {transform.scale < ZOOM_THRESHOLD && provinceMasks.map(mark => {
               const [projX, projY] = projection(mark.coordinates)
+              const noData = !mark.emotion || mark.emotion === 'none'
               const emo = EMOTIONS[mark.emotion]
               const isSelected = mark.label === selectedRegion
               return (
@@ -739,14 +806,16 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks }) 
                     >
                       <div style={{
                         display: 'inline-flex', alignItems: 'center', gap: '6px',
-                        background: isSelected ? SELECTED_PILL[mark.emotion].background : '#FFFFFF',
-                        border: isSelected ? SELECTED_PILL[mark.emotion].border : '1px solid #EEE8E0',
+                        background: !noData && isSelected ? SELECTED_PILL[mark.emotion].background : '#FFFFFF',
+                        border: !noData && isSelected ? SELECTED_PILL[mark.emotion].border : '1px solid #EEE8E0',
                         borderRadius: '20px', padding: '5px 10px 5px 6px',
                         boxShadow: isSelected ? '0 2px 10px rgba(0,0,0,0.12)' : '0 2px 6px rgba(0,0,0,0.08)',
                         whiteSpace: 'nowrap', transition: 'all 0.2s ease',
                       }}>
-                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: emo.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <emo.Icon size={13} color={emo.iconColor} strokeWidth={1.5} />
+                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: noData ? '#ECE7E0' : emo.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {noData
+                            ? <HelpCircle size={14} color="#9A8F80" strokeWidth={2.5} />
+                            : <emo.Icon size={13} color={emo.iconColor} strokeWidth={1.5} />}
                         </div>
                         <span style={{ fontSize: '13px', fontWeight: 500, color: '#1A1A1A' }}>{mark.label}</span>
                       </div>
@@ -783,14 +852,21 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks }) 
         <RegionPanel
           regionName={selectedRegion}
           onClose={() => setSelectedRegion(null)}
+          noData={(() => {
+            const p = provinceMasks.find(p => p.label === selectedRegion)
+            return !!p && (!p.emotion || p.emotion === 'none')
+          })()}
           weather={weather}
           weatherLoading={weatherLoading}
           userEntry={(() => {
             try {
-              const raw = sessionStorage.getItem('mwm_entry')
+              const raw = sessionStorage.getItem(entryKey())
               if (!raw) return null
               const e = JSON.parse(raw)
-              return e.region === selectedRegion ? e : null
+              // 오늘(로컬/KST) 기록만 "내 기록"으로 인정 — 어제 마커가 오늘 통계에 섞이지 않게
+              const d = new Date()
+              const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+              return (e.region === selectedRegion && e.date === today) ? e : null
             } catch { return null }
           })()}
         />

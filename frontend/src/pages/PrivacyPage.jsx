@@ -64,7 +64,7 @@ export default function PrivacyPage() {
           <h2 className="legal-h2">6. 개인정보 처리의 위탁</h2>
           <p className="legal-text">
             서비스는 원활한 운영을 위해 호스팅·인프라 등 일부 업무를 외부에 위탁할 수 있으며, 위탁이 발생하는 경우
-            수탁자와 위탁 업무 내용을 본 방침에 공개합니다. (현재 위탁 내역: 「해당 시 기재」)
+            수탁자와 위탁 업무 내용을 본 방침에 공개합니다. (현재 별도 위탁 없음)
           </p>
 
           <h2 className="legal-h2">7. 쿠키 및 로컬 스토리지</h2>
@@ -94,8 +94,8 @@ export default function PrivacyPage() {
 
           <h2 className="legal-h2">11. 개인정보 보호책임자</h2>
           <ul className="legal-list">
-            <li>책임자: 「성명/직책 기재」</li>
-            <li>연락처: 「이메일 / 전화번호 기재」</li>
+            <li>책임자: 박소호</li>
+            <li>연락처: <a href="mailto:thgh0258@gmail.com" style={{ color: 'inherit' }}>thgh0258@gmail.com</a></li>
           </ul>
           <p className="legal-text">
             개인정보 침해에 대한 상담이 필요한 경우 개인정보분쟁조정위원회(1833-6972), 개인정보침해신고센터

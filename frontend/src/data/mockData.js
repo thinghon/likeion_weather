@@ -159,7 +159,7 @@ export const PROVINCE_MARKS = [
   {
     id: "p-jeju",
     coordinates: [126.531, 33.5],
-    emotion: "sunny",
+    emotion: null, // 데이터 없음 상태 미리보기 (? 마커)
     label: "제주",
   },
   {

@@ -5,6 +5,7 @@ import KoreaMap from '../components/KoreaMap'
 import SideMenu from '../components/SideMenu'
 import EmotionEntryModal from '../components/EmotionEntryModal'
 import { useAuth } from '../context/AuthContext'
+import { entryKey } from '../utils/api'
 import { EMOTIONS, PROVINCE_MARKS, INDIVIDUAL_MARKS } from '../data/mockData'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -205,7 +206,7 @@ function DonutChart({ stats }) {
 export default function MapPage() {
   const navigate = useNavigate()
   const { region } = useParams()
-  const { isLoggedIn, logout } = useAuth()
+  const { isLoggedIn, user, logout } = useAuth()
 
   const [loginNudge, setLoginNudge] = useState(false)
 
@@ -215,7 +216,7 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true)
   const [showEntryModal, setShowEntryModal] = useState(() => {
     try {
-      const raw = sessionStorage.getItem('mwm_entry')
+      const raw = sessionStorage.getItem(entryKey())
       if (!raw) return true
       const saved = JSON.parse(raw)
       const today = new Date()
@@ -295,27 +296,31 @@ export default function MapPage() {
 
   useEffect(() => {
     fetchMapData()
-    
-    // Check if user has submitted today
-    const raw = sessionStorage.getItem('mwm_entry')
-    if (raw) {
-      try {
-        const saved = JSON.parse(raw)
-        // Check date
-        const todayStr = new Date().toISOString().slice(0, 10)
-        if (saved.date === todayStr && saved.latitude && saved.longitude) {
-          setUserMarks([{
-            id: 'user-today',
-            coordinates: [saved.longitude, saved.latitude],
-            emotion: saved.emotion,
-            comment: saved.comment || '',
-            timestamp: saved.timestamp || Date.now(),
-            region: saved.region || '내 위치'
-          }])
-        }
-      } catch {}
-    }
   }, [fetchMapData])
+
+  // 현재 신원(로그인/비로그인)의 오늘 마커를 지도에 표시. 신원이 바뀌면 다시 읽는다.
+  useEffect(() => {
+    const raw = sessionStorage.getItem(entryKey())
+    if (!raw) { setUserMarks([]); return }
+    try {
+      const saved = JSON.parse(raw)
+      // 로컬(KST) 자정 기준으로 비교. toISOString은 UTC라 KST 00~09시에 전날로 잡히는 버그가 있었음.
+      const d = new Date()
+      const todayStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+      if (saved.date === todayStr && saved.latitude && saved.longitude) {
+        setUserMarks([{
+          id: 'user-today',
+          coordinates: [saved.longitude, saved.latitude],
+          emotion: saved.emotion,
+          comment: saved.comment || '',
+          timestamp: saved.timestamp || Date.now(),
+          region: saved.region || '내 위치'
+        }])
+      } else {
+        setUserMarks([])
+      }
+    } catch { setUserMarks([]) }
+  }, [user])
 
   useEffect(() => {
     if (region) {
@@ -421,7 +426,7 @@ export default function MapPage() {
                 ) : (
                   <div className="comments-feed-list">
                     {regionFeed.map((item, idx) => {
-                      const emo = EMOTIONS[item.emotion]
+                      const emo = EMOTIONS[item.emotion] || EMOTIONS.sunny
                       return (
                         <div key={idx} className="feed-card" style={{ borderLeftColor: emo.border }}>
                           <div className="feed-card-header">

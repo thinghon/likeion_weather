@@ -78,13 +78,12 @@ export default function TermsPage() {
 
           <h2 className="legal-h2">제9조 (준거법 및 분쟁 해결)</h2>
           <p className="legal-text">
-            본 약관은 대한민국 법령에 따라 해석되며, 서비스와 이용자 간 분쟁에 관한 소송의 관할은 「관할 법원 기재
-            (예: 민사소송법상 관할 법원)」으로 합니다.
+            본 약관은 대한민국 법령에 따라 해석되며, 서비스와 이용자 간 분쟁에 관한 소송의 관할은 민사소송법상 관할 법원으로 합니다.
           </p>
 
           <h2 className="legal-h2">문의</h2>
           <p className="legal-text">
-            약관에 관한 문의는 「운영자 이메일 기재」로 연락 바랍니다.
+            약관에 관한 문의는 <a href="mailto:thgh0258@gmail.com" style={{ color: 'inherit' }}>thgh0258@gmail.com</a>으로 연락 바랍니다.
           </p>
 
           <p className="legal-meta">최종 업데이트: 2026년 6월 27일</p>

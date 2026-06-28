@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import EmotionCard from './EmotionCard'
-import { authFetch } from '../utils/api'
+import { authFetch, entryKey } from '../utils/api'
+import { useAuth } from '../context/AuthContext'
 import { EMOTIONS, PROVINCE_MARKS } from '../data/mockData'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -33,6 +34,7 @@ function getSessionId() {
 }
 
 export default function EmotionEntryModal({ onClose, onSubmitted }) {
+  const { user } = useAuth()
   const [selected, setSelected] = useState(null)
   const [comment, setComment] = useState('')
   const [region, setRegion] = useState('서울')
@@ -87,8 +89,8 @@ export default function EmotionEntryModal({ onClose, onSubmitted }) {
     }
     loadDominant()
 
-    // 오늘 이미 제출했는지 확인
-    const raw = sessionStorage.getItem('mwm_entry')
+    // 오늘 이미 제출했는지 확인 (현재 신원의 슬롯만 — 키가 사용자별로 분리됨)
+    const raw = sessionStorage.getItem(entryKey())
     if (raw) {
       try {
         const saved = JSON.parse(raw)
@@ -140,6 +142,7 @@ export default function EmotionEntryModal({ onClose, onSubmitted }) {
           date: getToday(), emotion: data.emotion, comment: data.comment,
           latitude: finalLat, longitude: finalLng, region: data.region,
           timestamp: data.timestamp,
+          username: user?.username || null,
         }
       }
     } catch {}
@@ -150,10 +153,11 @@ export default function EmotionEntryModal({ onClose, onSubmitted }) {
         latitude: finalLat, longitude: finalLng,
         region: finalLat && finalLng ? findNearestRegion(finalLat, finalLng) : region,
         timestamp: Date.now(),
+        username: user?.username || null,
       }
     }
 
-    sessionStorage.setItem('mwm_entry', JSON.stringify(entry))
+    sessionStorage.setItem(entryKey(), JSON.stringify(entry))
     try {
       const existing = localStorage.getItem('mwm_journal')
       let journal = existing ? JSON.parse(existing) : []

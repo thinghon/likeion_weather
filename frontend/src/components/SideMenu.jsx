@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Menu, X, Map, TrendingUp, BarChart2, BookOpen, HelpCircle, LogIn, LogOut } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { authFetch, API_URL } from '../utils/api'
+import { authFetch, API_URL, entryKey } from '../utils/api'
 
 const NAV_ITEMS = [
   { id: 'map',     label: '실시간 전국 지도',   Icon: Map,        path: '/map' },
@@ -38,9 +38,8 @@ export default function SideMenu() {
     try {
       await authFetch(`${API_URL}/api/auth/me/`, { method: 'DELETE' })
     } catch {}
-    // 로컬 데이터 전부 삭제
-    localStorage.clear()
-    sessionStorage.clear()
+    localStorage.removeItem('mwm_journal')      // 이 기기의 일기 삭제 (정책상 마커는 DB에 익명으로 보존)
+    sessionStorage.removeItem(entryKey())       // 탈퇴 계정의 지도 마커 슬롯만 제거
     logout()
   }
 
@@ -49,6 +48,13 @@ export default function SideMenu() {
       <button className="menu-fab" onClick={() => setOpen(true)} aria-label="메뉴 열기">
         <Menu size={24} />
       </button>
+
+      {location.pathname !== '/map' && (
+        <button className="map-quick-fab" onClick={() => navigate('/map')} aria-label="지도로 가기">
+          <Map size={20} />
+          <span>지도</span>
+        </button>
+      )}
 
       {open && (
         <div className="drawer-overlay" onClick={() => { setOpen(false); setWithdrawConfirm(false) }} />

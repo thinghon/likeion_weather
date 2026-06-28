@@ -237,6 +237,7 @@ def delete_me_api(request):
     if user is None:
         return JsonResponse({"error": "인증이 필요해요"}, status=401)
 
+    EmotionEntry.objects.filter(user=user).update(user=None)
     user.delete()
     return JsonResponse({}, status=204)
 
@@ -291,7 +292,7 @@ def emotions_api(request):
                 counter = Counter(user_emotions)
                 rep_emotion = counter.most_common(1)[0][0]
             else:
-                rep_emotion = p["emotion"]  # fallback to defaults
+                rep_emotion = None  # 오늘 기록 없음 → 프론트에서 '?' 마커로 표시
                 
             province_masks.append({
                 "id": p["id"],
@@ -360,12 +361,13 @@ def emotions_api(request):
                 ).first()
 
             if existing_entry:
-                # Update today's entry
+                # Update today's entry (마지막 수정 시각으로 created_at 갱신 → 마커 시간이 최신 활동 반영)
                 existing_entry.emotion_type = emotion_type
                 existing_entry.comment = comment[:50]
                 existing_entry.region = resolved_region
                 existing_entry.latitude = float(latitude)
                 existing_entry.longitude = float(longitude)
+                existing_entry.created_at = datetime.now(KST)
                 existing_entry.save()
                 entry = existing_entry
                 status_code = 200
