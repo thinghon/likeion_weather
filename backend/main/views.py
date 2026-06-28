@@ -1,13 +1,16 @@
 import json
+import secrets
 import zoneinfo
 from datetime import datetime, timedelta
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate
 from django.utils import timezone
 from django.db.models import Count
 from collections import Counter
 
-from .models import EmotionEntry, WeatherComparison
+from .models import EmotionEntry, WeatherComparison, AuthToken
 from .geocoding_service import resolve_location
 from .weather_service import fetch_real_weather, REGION_CITY_MAP
 
@@ -151,6 +154,93 @@ def random_weighted_choice(options, weights):
     return options[0]
 
 
+def _get_user_from_request(request):
+    """Authorization: Bearer <token> 헤더에서 유저 반환. 없거나 유효하지 않으면 None."""
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    if not auth_header.startswith('Bearer '):
+        return None
+    token_key = auth_header[7:]
+    try:
+        return AuthToken.objects.select_related('user').get(key=token_key).user
+    except AuthToken.DoesNotExist:
+        return None
+
+
+@csrf_exempt
+def check_username_api(request):
+    """GET /api/auth/check-username/?username=<username>"""
+    if request.method != 'GET':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    username = request.GET.get('username', '').strip()
+    if not username:
+        return JsonResponse({"error": "username is required"}, status=400)
+    available = not User.objects.filter(username=username).exists()
+    return JsonResponse({"available": available})
+
+
+@csrf_exempt
+def signup_api(request):
+    """POST /api/auth/signup/  Body: { username, password }"""
+    if request.method != 'POST':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+
+    if not username or not password:
+        return JsonResponse({"error": "username and password are required"}, status=400)
+
+    if User.objects.filter(username=username).exists():
+        return JsonResponse({"error": "이미 사용 중인 아이디에요"}, status=409)
+
+    User.objects.create_user(username=username, password=password)
+    return JsonResponse({"message": "회원가입 성공"}, status=201)
+
+
+@csrf_exempt
+def login_api(request):
+    """POST /api/auth/login/  Body: { username, password }"""
+    if request.method != 'POST':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+
+    user = authenticate(username=username, password=password)
+    if user is None:
+        return JsonResponse({"error": "아이디 또는 비밀번호가 틀렸어요"}, status=401)
+
+    token_key = secrets.token_urlsafe(48)
+    AuthToken.objects.update_or_create(user=user, defaults={"key": token_key})
+
+    return JsonResponse({
+        "access_token": token_key,
+        "user": {"username": user.username}
+    })
+
+
+@csrf_exempt
+def delete_me_api(request):
+    """DELETE /api/auth/me/"""
+    if request.method != 'DELETE':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if user is None:
+        return JsonResponse({"error": "인증이 필요해요"}, status=401)
+
+    user.delete()
+    return JsonResponse({}, status=204)
+
+
 @csrf_exempt
 def emotions_api(request):
     """
@@ -224,28 +314,30 @@ def emotions_api(request):
             latitude = data.get('latitude')
             longitude = data.get('longitude')
             region = data.get('region')
-            
+
             if not session_id or not emotion_type:
                 return JsonResponse({"error": "Missing required fields (session_id, emotion_type)"}, status=400)
-                
+
             if emotion_type not in ['sunny', 'cloudy', 'rainy', 'storm']:
                 return JsonResponse({"error": "Invalid emotion type"}, status=400)
-            
+
+            # 로그인 유저 확인
+            auth_user = _get_user_from_request(request)
+
             # Resolve region name
             resolved_region = region
             if latitude is not None and longitude is not None:
                 nearest = find_nearest_province(float(latitude), float(longitude))
                 resolved_region = nearest["name"]
-            
+
             if not resolved_region:
-                # Fallback to Seoul if region is not resolved
                 resolved_region = "서울"
-                
+
             # Keep region in bounds
             prov_names = [p["name"] for p in PROVINCE_DEFAULTS]
             if resolved_region not in prov_names:
                 resolved_region = "서울"
-                
+
             # If coordinates are missing, fill them with province centers
             if latitude is None or longitude is None:
                 for p in PROVINCE_DEFAULTS:
@@ -253,14 +345,20 @@ def emotions_api(request):
                         latitude = p["lat"]
                         longitude = p["lng"]
                         break
-            
+
             # Check 1 limit per day per user (reset at midnight KST)
             today_date = datetime.now(KST).date()
-            existing_entry = EmotionEntry.objects.filter(
-                session_id=session_id, 
-                created_at__date=today_date
-            ).first()
-            
+            if auth_user:
+                existing_entry = EmotionEntry.objects.filter(
+                    user=auth_user,
+                    created_at__date=today_date
+                ).first()
+            else:
+                existing_entry = EmotionEntry.objects.filter(
+                    session_id=session_id,
+                    created_at__date=today_date
+                ).first()
+
             if existing_entry:
                 # Update today's entry
                 existing_entry.emotion_type = emotion_type
@@ -275,6 +373,7 @@ def emotions_api(request):
                 # Create new entry
                 entry = EmotionEntry.objects.create(
                     session_id=session_id,
+                    user=auth_user,
                     region=resolved_region,
                     emotion_type=emotion_type,
                     comment=comment[:50],
@@ -462,6 +561,40 @@ def location_resolve_api(request):
         return JsonResponse({"error": "Coordinates are outside supported Korea bounds"}, status=400)
 
     return JsonResponse(resolve_location(lat, lng))
+
+
+def region_history_api(request, region_name):
+    """
+    GET /api/emotions/region/<name>/history/?days=7
+    Returns per-day emotion counts for the given region.
+    """
+    populate_mock_history_if_empty()
+
+    prov_names = [p["name"] for p in PROVINCE_DEFAULTS]
+    if region_name not in prov_names:
+        return JsonResponse({"error": "Region not found"}, status=404)
+
+    try:
+        days = int(request.GET.get('days', 7))
+        days = max(1, min(days, 90))
+    except ValueError:
+        return JsonResponse({"error": "days must be an integer"}, status=400)
+
+    now = timezone.now()
+    history_data = []
+
+    for day_offset in range(days - 1, -1, -1):
+        date = (now - timedelta(days=day_offset)).date()
+        counts = {'sunny': 0, 'cloudy': 0, 'rainy': 0, 'storm': 0}
+        for e in EmotionEntry.objects.filter(region=region_name, created_at__date=date):
+            if e.emotion_type in counts:
+                counts[e.emotion_type] += 1
+        history_data.append({
+            "date": date.strftime('%m-%d'),
+            **counts,
+        })
+
+    return JsonResponse(history_data, safe=False)
 
 
 @csrf_exempt
