@@ -107,3 +107,31 @@ def fetch_real_weather(region_name):
         "weather": mock_weather,
         "raw_desc": "Mock weather"
     }
+
+
+def fetch_current_weather_detail(region_name):
+    """
+    상세 현재 날씨(온도/체감/설명/아이콘/습도/풍속)를 서버에서 조회한다.
+    OpenWeather 키를 서버에만 두기 위한 프록시용. 키가 없거나 실패하면 None.
+    """
+    api_key = os.environ.get("OPENWEATHERMAP_API_KEY")
+    if not api_key:
+        return None
+
+    city = REGION_CITY_MAP.get(region_name, "Seoul")
+    try:
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={city},KR&appid={api_key}&units=metric&lang=kr"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=3) as response:
+            d = json.loads(response.read().decode('utf-8'))
+        return {
+            "temp": round(d["main"]["temp"]),
+            "feels_like": round(d["main"]["feels_like"]),
+            "description": d["weather"][0]["description"],
+            "icon": d["weather"][0]["icon"],
+            "humidity": d["main"]["humidity"],
+            "wind": round(d["wind"]["speed"] * 3.6),
+        }
+    except Exception as e:
+        print(f"Error fetching detailed weather for {region_name}: {str(e)}")
+        return None

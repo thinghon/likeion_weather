@@ -1,4 +1,4 @@
-import json
+﻿import json
 import secrets
 import zoneinfo
 from datetime import datetime, timedelta
@@ -6,13 +6,12 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from django.utils import timezone
 from django.db.models import Count
 from collections import Counter
 
 from .models import EmotionEntry, WeatherComparison, AuthToken
 from .geocoding_service import resolve_location
-from .weather_service import fetch_real_weather, REGION_CITY_MAP
+from .weather_service import fetch_real_weather, fetch_current_weather_detail, REGION_CITY_MAP
 
 # 17 provinces coordinates and defaults
 PROVINCE_DEFAULTS = [
@@ -46,112 +45,6 @@ def find_nearest_province(lat, lng):
             min_dist = dist
             nearest = p
     return nearest
-
-def populate_mock_history_if_empty():
-    """
-    Populate database with realistic historical mock data for 7-day trend
-    and comparison if EmotionEntry is completely empty.
-    """
-    if EmotionEntry.objects.exists():
-        return
-        
-    print("Populating database with historical mock data...")
-    now = timezone.now()
-    
-    comments = {
-        'sunny': ["오늘 날씨처럼 기분도 맑아요!", "나들이 가기 좋은 날씨!", "기분이 최고네요", "퇴근하고 맛있는 거 먹어야지", "과제 끝나서 행복함"],
-        'cloudy': ["조금 꿀꿀한 오후", "구름이 많네요", "기분이 그냥 그래요", "멍하니 하늘 보고 있는 중", "내일은 해가 떴으면 좋겠다"],
-        'rainy': ["비가 오니까 차분해집니다", "우산을 안 가져왔어요 ㅠㅠ", "막걸리에 파전 땡기는 날", "센치한 밤이네요", "빗소리 듣기 좋습니다"],
-        'storm': ["과제 폭탄 맞음...", "오늘 완전 멘탈 바사삭", "번개 조심하세요", "기분이 너무 어둡습니다", "시험 망침 ㅠㅠ"]
-    }
-    
-    # Generate mock entries for the past 7 days (today - 6 days to today)
-    for day_offset in range(6, -1, -1):
-        date = (now - timedelta(days=day_offset)).date()
-        
-        # Determine day of week to fluctuate counts
-        weekday = date.weekday()
-        # Weekends have more sunny emotions, Mondays have more storm/cloudy
-        num_entries = 12 if weekday >= 5 else 8
-        
-        for i in range(num_entries):
-            # Pick a random region
-            p = random_choice(PROVINCE_DEFAULTS)
-            # Pick an emotion with custom weights based on day of week
-            if weekday == 0:  # Monday
-                emotions = ['sunny', 'cloudy', 'rainy', 'storm']
-                weights = [0.2, 0.4, 0.2, 0.2]
-            elif weekday >= 5:  # Weekend
-                emotions = ['sunny', 'cloudy', 'rainy', 'storm']
-                weights = [0.6, 0.2, 0.15, 0.05]
-            else:  # Normal days
-                emotions = ['sunny', 'cloudy', 'rainy', 'storm']
-                weights = [0.4, 0.3, 0.2, 0.1]
-            
-            emotion = random_weighted_choice(emotions, weights)
-            comment = random_choice(comments[emotion])
-            
-            # Generate deterministic hours for distribution
-            hour = (i * 3 + day_offset) % 24
-            entry_time = timezone.make_aware(
-                datetime(date.year, date.month, date.day, hour, 0, 0),
-                KST
-            )
-            
-            EmotionEntry.objects.create(
-                session_id=f"mock-user-{day_offset}-{i}",
-                region=p["name"],
-                emotion_type=emotion,
-                comment=comment,
-                latitude=p["lat"] + (random_diff() * 0.1),
-                longitude=p["lng"] + (random_diff() * 0.1),
-                created_at=entry_time
-            )
-            
-        # Also pre-generate historical WeatherComparison entries
-        for p in PROVINCE_DEFAULTS:
-            # Deterministic weather
-            val = sum(ord(c) for c in p["name"]) + date.day
-            weathers = ["sunny", "cloudy", "rainy", "storm"]
-            real_w = weathers[val % 4]
-            real_t = 15.0 + (val % 15) if 4 <= date.month <= 9 else 0.0 + (val % 10)
-            
-            # Get dominant emotion for that date in mock
-            entries = EmotionEntry.objects.filter(region=p["name"], created_at__date=date)
-            if entries.exists():
-                counts = Counter([e.emotion_type for e in entries])
-                dominant = counts.most_common(1)[0][0]
-            else:
-                dominant = p["emotion"]
-                
-            WeatherComparison.objects.create(
-                region=p["name"],
-                date=date,
-                real_weather=real_w,
-                real_temp=round(real_t, 1),
-                dominant_emotion=dominant
-            )
-
-# Quick random helper functions to avoid importing external random
-def random_choice(lst):
-    import time
-    t = int(time.time() * 1000)
-    return lst[t % len(lst)]
-
-def random_diff():
-    import time
-    t = int(time.time() * 1000)
-    return ((t % 200) - 100) / 100.0  # -1.0 to 1.0
-
-def random_weighted_choice(options, weights):
-    import time
-    t = (int(time.time() * 1000) % 100) / 100.0
-    cum = 0
-    for opt, w in zip(options, weights):
-        cum += w
-        if t <= cum:
-            return opt
-    return options[0]
 
 
 def _get_user_from_request(request):
@@ -247,7 +140,6 @@ def emotions_api(request):
     """
     Handles GET /api/emotions/ and POST /api/emotions/
     """
-    populate_mock_history_if_empty()
     
     if request.method == 'GET':
         today_date = datetime.now(KST).date()
@@ -403,7 +295,6 @@ def region_detail_api(request, region_name):
     GET /api/emotions/region/<str:region_name>/
     Returns stats and recent comments for a specific region.
     """
-    populate_mock_history_if_empty()
     
     # Check if region name exists
     prov_names = [p["name"] for p in PROVINCE_DEFAULTS]
@@ -432,14 +323,7 @@ def region_detail_api(request, region_name):
                 "comment": e.comment,
                 "timestamp": int(e.created_at.timestamp() * 1000)
             })
-            
-    # Fallback default mock comments if feed is empty
-    if not feed:
-        feed = [
-            {"id": -1, "emotion": "sunny", "comment": f"오늘 {region_name}은 살기 좋습니다!", "timestamp": int((timezone.now() - timedelta(hours=2)).timestamp() * 1000)},
-            {"id": -2, "emotion": "cloudy", "comment": "평범하고 한산한 하루네요.", "timestamp": int((timezone.now() - timedelta(hours=5)).timestamp() * 1000)}
-        ]
-        
+
     return JsonResponse({
         "region": region_name,
         "total": entries.count(),
@@ -453,7 +337,6 @@ def weather_compare_api(request):
     GET /api/emotions/compare/
     Compare OpenWeatherMap current weather vs daily dominant emotion weather for each region.
     """
-    populate_mock_history_if_empty()
     today_date = datetime.now(KST).date()
     
     comparison_data = []
@@ -472,21 +355,22 @@ def weather_compare_api(request):
             counter = Counter([e.emotion_type for e in today_entries])
             dominant = counter.most_common(1)[0][0]
         else:
-            dominant = p["emotion"]  # fallback
-            
-        # Log to DB for caching/history records if not already exist
-        try:
-            WeatherComparison.objects.get_or_create(
-                region=region,
-                date=today_date,
-                defaults={
-                    "real_weather": real_w,
-                    "real_temp": real_t,
-                    "dominant_emotion": dominant
-                }
-            )
-        except Exception:
-            pass  # Avoid conflicts on simultaneous requests
+            dominant = None  # 오늘 기록 없음 → 프론트에서 '?'(데이터 없음) 표시 (지도와 동일)
+
+        # Log to DB for caching/history records if not already exist (기록 있을 때만)
+        if dominant:
+            try:
+                WeatherComparison.objects.get_or_create(
+                    region=region,
+                    date=today_date,
+                    defaults={
+                        "real_weather": real_w,
+                        "real_temp": real_t,
+                        "dominant_emotion": dominant
+                    }
+                )
+            except Exception:
+                pass  # Avoid conflicts on simultaneous requests
             
         comparison_data.append({
             "region": region,
@@ -502,41 +386,44 @@ def weather_compare_api(request):
 def history_api(request):
     """
     GET /api/emotions/history/
-    Returns daily counts for each of the 4 emotions for the last 7 days.
+    Returns daily counts for each of the 4 emotions for the last 7 days (KST 기준).
     """
-    populate_mock_history_if_empty()
-    now = timezone.now()
-    
+    today_kst = datetime.now(KST).date()
+
     history_data = []
-    
-    # Query past 7 calendar days
+
+    # 최근 7일 (KST 자정 경계로 집계 — POST 제한 로직과 동일 기준)
     for day_offset in range(6, -1, -1):
-        date = (now - timedelta(days=day_offset)).date()
-        date_str = date.strftime('%m-%d')
-        
-        # Group entries by emotion_type for this date
-        day_entries = EmotionEntry.objects.filter(created_at__date=date)
-        
-        counts = {
-            'sunny': 0,
-            'cloudy': 0,
-            'rainy': 0,
-            'storm': 0
-        }
-        
-        for e in day_entries:
+        day = today_kst - timedelta(days=day_offset)
+        start = datetime(day.year, day.month, day.day, tzinfo=KST)
+        end = start + timedelta(days=1)
+
+        counts = {'sunny': 0, 'cloudy': 0, 'rainy': 0, 'storm': 0}
+        for e in EmotionEntry.objects.filter(created_at__gte=start, created_at__lt=end):
             if e.emotion_type in counts:
                 counts[e.emotion_type] += 1
-                
-        history_data.append({
-            "date": date_str,
-            "sunny": counts['sunny'],
-            "cloudy": counts['cloudy'],
-            "rainy": counts['rainy'],
-            "storm": counts['storm']
-        })
-        
+
+        history_data.append({"date": day.strftime('%Y-%m-%d'), **counts})
+
     return JsonResponse(history_data, safe=False)
+
+
+def weather_current_api(request):
+    """
+    GET /api/weather/?region=<name>
+    프론트가 직접 OpenWeather를 호출하지 않도록 서버에서 대신 조회한다(API 키 비노출).
+    """
+    if request.method != 'GET':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    region = request.GET.get('region', '').strip()
+    if not region:
+        return JsonResponse({"error": "region is required"}, status=400)
+
+    detail = fetch_current_weather_detail(region)
+    if not detail:
+        return JsonResponse({"available": False})
+    return JsonResponse({"available": True, **detail})
 
 
 def location_resolve_api(request):
@@ -570,7 +457,6 @@ def region_history_api(request, region_name):
     GET /api/emotions/region/<name>/history/?days=7
     Returns per-day emotion counts for the given region.
     """
-    populate_mock_history_if_empty()
 
     prov_names = [p["name"] for p in PROVINCE_DEFAULTS]
     if region_name not in prov_names:
@@ -582,19 +468,18 @@ def region_history_api(request, region_name):
     except ValueError:
         return JsonResponse({"error": "days must be an integer"}, status=400)
 
-    now = timezone.now()
+    today_kst = datetime.now(KST).date()
     history_data = []
 
     for day_offset in range(days - 1, -1, -1):
-        date = (now - timedelta(days=day_offset)).date()
+        day = today_kst - timedelta(days=day_offset)
+        start = datetime(day.year, day.month, day.day, tzinfo=KST)
+        end = start + timedelta(days=1)
         counts = {'sunny': 0, 'cloudy': 0, 'rainy': 0, 'storm': 0}
-        for e in EmotionEntry.objects.filter(region=region_name, created_at__date=date):
+        for e in EmotionEntry.objects.filter(region=region_name, created_at__gte=start, created_at__lt=end):
             if e.emotion_type in counts:
                 counts[e.emotion_type] += 1
-        history_data.append({
-            "date": date.strftime('%m-%d'),
-            **counts,
-        })
+        history_data.append({"date": day.strftime('%Y-%m-%d'), **counts})
 
     return JsonResponse(history_data, safe=False)
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { geoMercator, geoPath } from 'd3-geo'
 import { X, HelpCircle } from 'lucide-react'
 import { EMOTIONS, COMPARE_COMMENTS } from '../data/mockData'
-import { entryKey } from '../utils/api'
+import { API_URL, entryKey } from '../utils/api'
 
 const W = 800
 const H = 900
@@ -60,17 +60,6 @@ const DONUT_COLORS = {
   sunny: '#F0C080', cloudy: '#C0CAD4', rainy: '#A0B8E8', storm: '#C0A8E0',
 }
 
-const WEATHER_COORDS = {
-  '서울': { lat: 37.5665, lon: 126.9780 }, '부산': { lat: 35.1796, lon: 129.0756 },
-  '인천': { lat: 37.4563, lon: 126.7052 }, '대구': { lat: 35.8714, lon: 128.6014 },
-  '대전': { lat: 36.3504, lon: 127.3845 }, '광주': { lat: 35.1595, lon: 126.8526 },
-  '울산': { lat: 35.5384, lon: 129.3114 }, '세종': { lat: 36.4800, lon: 127.2890 },
-  '경기': { lat: 37.4138, lon: 127.5183 }, '강원': { lat: 37.8228, lon: 128.1555 },
-  '충북': { lat: 36.6357, lon: 127.4914 }, '충남': { lat: 36.5184, lon: 126.8000 },
-  '전북': { lat: 35.7175, lon: 127.1530 }, '전남': { lat: 34.8679, lon: 126.9910 },
-  '경북': { lat: 36.4919, lon: 128.8889 }, '경남': { lat: 35.4606, lon: 128.2132 },
-  '제주': { lat: 33.4996, lon: 126.5312 },
-}
 
 const GEO_NAME_MAP = {
   '서울': '서울', '부산': '부산', '인천': '인천', '대구': '대구',
@@ -388,13 +377,17 @@ function RegionPanel({ regionName, onClose, noData, weather, weatherLoading, use
         }}
         onClick={e => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
           <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1A0E00' }}>{regionName}</h2>
           <button onClick={onClose} style={{ color: '#9A7040', padding: '4px', borderRadius: '6px', flexShrink: 0, marginTop: '2px' }}>
             <X size={20} />
           </button>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '64px 16px', gap: '14px' }}>
+
+        {/* 기록이 없어도 현재 실제 날씨는 보여준다 (감정 쪽은 '기록 없음'으로 표시됨) */}
+        <WeatherCompareCard weather={weather} weatherLoading={weatherLoading} distribution={null} />
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '24px 16px 40px', gap: '14px' }}>
           <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#ECE7E0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <HelpCircle size={34} color="#9A8F80" strokeWidth={2.2} />
           </div>
@@ -645,22 +638,13 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks }) 
     lastPos.current = toSVGPt(e.clientX, e.clientY)
   }
 
-  // selectedRegion 변경 시 실제 날씨 fetch
+  // selectedRegion 변경 시 실제 날씨 fetch — 키는 백엔드에만, 서버 프록시(/api/weather/) 사용
   useEffect(() => {
     if (!selectedRegion) { setWeather(null); return }
-    const coords = WEATHER_COORDS[selectedRegion]
-    const API_KEY = import.meta.env.VITE_WEATHER_API_KEY
-    if (!coords || !API_KEY || API_KEY === 'your_openweather_api_key') { setWeather(false); return }
     setWeatherLoading(true)
-    fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${coords.lat}&lon=${coords.lon}&appid=${API_KEY}&units=metric&lang=kr`)
+    fetch(`${API_URL}/api/weather/?region=${encodeURIComponent(selectedRegion)}`)
       .then(r => r.json())
-      .then(d => setWeather({
-        temp: Math.round(d.main.temp),
-        description: d.weather[0].description,
-        icon: d.weather[0].icon,
-        humidity: d.main.humidity,
-        wind: Math.round(d.wind.speed * 3.6),
-      }))
+      .then(d => setWeather(d.available ? d : false))
       .catch(() => setWeather(false))
       .finally(() => setWeatherLoading(false))
   }, [selectedRegion])
@@ -860,7 +844,7 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks }) 
           weatherLoading={weatherLoading}
           userEntry={(() => {
             try {
-              const raw = sessionStorage.getItem(entryKey())
+              const raw = localStorage.getItem(entryKey())
               if (!raw) return null
               const e = JSON.parse(raw)
               // 오늘(로컬/KST) 기록만 "내 기록"으로 인정 — 어제 마커가 오늘 통계에 섞이지 않게

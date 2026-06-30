@@ -18,6 +18,9 @@ urlpatterns = [
     path('emotions/region/<str:region_name>/history/', views.region_history_api, name='region_history_api'),
     path('emotions/region/<str:region_name>/', views.region_detail_api, name='region_detail_api'),
 
+    # Weather (서버 프록시 — OpenWeather 키를 클라이언트에 노출하지 않음)
+    path('weather/', views.weather_current_api, name='weather_current_api'),
+
     # Location
     path('location/resolve/', views.location_resolve_api, name='location_resolve_api'),
 ]

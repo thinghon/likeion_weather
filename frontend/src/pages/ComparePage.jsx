@@ -6,27 +6,9 @@ import EmotionMarker from '../components/EmotionMarker'
 import { entryKey } from '../utils/api'
 import { EMOTIONS, COMPARE_COMMENTS, PROVINCE_MARKS } from '../data/mockData'
 
-const WEATHER_COORDS = {
-  '서울': { lat: 37.5665, lon: 126.9780 }, '부산': { lat: 35.1796, lon: 129.0756 },
-  '인천': { lat: 37.4563, lon: 126.7052 }, '대구': { lat: 35.8714, lon: 128.6014 },
-  '대전': { lat: 36.3504, lon: 127.3845 }, '광주': { lat: 35.1595, lon: 126.8526 },
-  '울산': { lat: 35.5384, lon: 129.3114 }, '세종': { lat: 36.4800, lon: 127.2890 },
-  '경기': { lat: 37.4138, lon: 127.5183 }, '강원': { lat: 37.8228, lon: 128.1555 },
-  '충북': { lat: 36.6357, lon: 127.4914 }, '충남': { lat: 36.5184, lon: 126.8000 },
-  '전북': { lat: 35.7175, lon: 127.1530 }, '전남': { lat: 34.8679, lon: 126.9910 },
-  '경북': { lat: 36.4919, lon: 128.8889 }, '경남': { lat: 35.4606, lon: 128.2132 },
-  '제주': { lat: 33.4996, lon: 126.5312 },
-}
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-function iconToWeather(icon) {
-  if (icon.startsWith('01')) return 'sunny'
-  if (icon.startsWith('02') || icon.startsWith('03') || icon.startsWith('04')) return 'cloudy'
-  if (icon.startsWith('09') || icon.startsWith('10')) return 'rainy'
-  if (icon.startsWith('11')) return 'storm'
-  return 'cloudy'
-}
-
-// API 키 없을 때 fallback
+// 백엔드 연동 실패 시 fallback
 const MOCK_REAL_WEATHER = {
   '서울': { weather: 'cloudy', temp: 17 }, '부산': { weather: 'sunny',  temp: 22 },
   '인천': { weather: 'rainy',  temp: 15 }, '대구': { weather: 'cloudy', temp: 19 },
@@ -62,7 +44,7 @@ export default function ComparePage() {
   // 현재 신원의 오늘 마커에서 내가 찍은 지역을 읽어온다.
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(entryKey())
+      const raw = localStorage.getItem(entryKey())
       if (!raw) return
       const saved = JSON.parse(raw)
       const d = new Date()
@@ -73,53 +55,15 @@ export default function ComparePage() {
 
   useEffect(() => {
     async function loadComparisons() {
-      const API_KEY = import.meta.env.VITE_WEATHER_API_KEY
-
-      if (!API_KEY || API_KEY === 'your_openweather_api_key') {
+      try {
+        const res = await fetch(`${API_URL}/api/emotions/compare/`)
+        if (!res.ok) throw new Error('compare fetch failed')
+        setData(await res.json())
+      } catch {
         setData(buildMock())
+      } finally {
         setLoading(false)
-        return
       }
-
-      // 17개 지역 병렬 fetch
-      const results = await Promise.allSettled(
-        PROVINCE_MARKS.map(async mark => {
-          const coords = WEATHER_COORDS[mark.label]
-          const res = await fetch(
-            `https://api.openweathermap.org/data/2.5/weather?lat=${coords.lat}&lon=${coords.lon}&appid=${API_KEY}&units=metric&lang=kr`
-          )
-          const d = await res.json()
-          const real_weather = iconToWeather(d.weather[0].icon)
-          return {
-            region: mark.label,
-            real_weather,
-            real_temp: Math.round(d.main.temp),
-            emotion_weather: mark.emotion,
-            match: real_weather === mark.emotion,
-          }
-        })
-      )
-
-      // 실패한 지역은 mock으로 채움
-      const resolved = new Map(
-        results
-          .filter(r => r.status === 'fulfilled')
-          .map(r => [r.value.region, r.value])
-      )
-      const allData = PROVINCE_MARKS.map(mark => {
-        if (resolved.has(mark.label)) return resolved.get(mark.label)
-        const real = MOCK_REAL_WEATHER[mark.label] || { weather: 'sunny', temp: 20 }
-        return {
-          region: mark.label,
-          real_weather: real.weather,
-          real_temp: real.temp,
-          emotion_weather: mark.emotion,
-          match: real.weather === mark.emotion,
-        }
-      })
-
-      setData(allData)
-      setLoading(false)
     }
 
     loadComparisons()

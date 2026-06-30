@@ -6,29 +6,9 @@ import SideMenu from '../components/SideMenu'
 import EmotionEntryModal from '../components/EmotionEntryModal'
 import { useAuth } from '../context/AuthContext'
 import { entryKey } from '../utils/api'
-import { EMOTIONS, PROVINCE_MARKS, INDIVIDUAL_MARKS } from '../data/mockData'
+import { EMOTIONS } from '../data/mockData'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-
-const WEATHER_COORDS = {
-  '서울': { lat: 37.5665, lon: 126.9780 },
-  '부산': { lat: 35.1796, lon: 129.0756 },
-  '인천': { lat: 37.4563, lon: 126.7052 },
-  '대구': { lat: 35.8714, lon: 128.6014 },
-  '대전': { lat: 36.3504, lon: 127.3845 },
-  '광주': { lat: 35.1595, lon: 126.8526 },
-  '울산': { lat: 35.5384, lon: 129.3114 },
-  '세종': { lat: 36.4800, lon: 127.2890 },
-  '경기': { lat: 37.4138, lon: 127.5183 },
-  '강원': { lat: 37.8228, lon: 128.1555 },
-  '충북': { lat: 36.6357, lon: 127.4914 },
-  '충남': { lat: 36.5184, lon: 126.8000 },
-  '전북': { lat: 35.7175, lon: 127.1530 },
-  '전남': { lat: 34.8679, lon: 126.9910 },
-  '경북': { lat: 36.4919, lon: 128.8889 },
-  '경남': { lat: 35.4606, lon: 128.2132 },
-  '제주': { lat: 33.4996, lon: 126.5312 },
-}
 
 function iconToWeather(icon) {
   if (icon.startsWith('01')) return 'sunny'
@@ -210,13 +190,13 @@ export default function MapPage() {
 
   const [loginNudge, setLoginNudge] = useState(false)
 
-  const [provinceMasks, setProvinceMasks] = useState(PROVINCE_MARKS)
-  const [individualMarks, setIndividualMarks] = useState(INDIVIDUAL_MARKS)
+  const [provinceMasks, setProvinceMasks] = useState([])
+  const [individualMarks, setIndividualMarks] = useState([])
   const [userMarks, setUserMarks] = useState([])
   const [loading, setLoading] = useState(true)
   const [showEntryModal, setShowEntryModal] = useState(() => {
     try {
-      const raw = sessionStorage.getItem(entryKey())
+      const raw = localStorage.getItem(entryKey())
       if (!raw) return true
       const saved = JSON.parse(raw)
       const today = new Date()
@@ -236,39 +216,27 @@ export default function MapPage() {
 
   // Fetch all map markers
   const fetchMapData = useCallback(async () => {
-    // TODO: 백엔드 연동 시 아래 주석 해제
-    // try {
-    //   const res = await fetch(`${API_URL}/api/emotions/`)
-    //   if (res.ok) {
-    //     const json = await res.json()
-    //     if (json.province_masks?.length > 0) setProvinceMasks(json.province_masks)
-    //     if (json.individual_marks?.length > 0) setIndividualMarks(json.individual_marks)
-    //   }
-    // } catch (e) { console.error('Failed to fetch map data:', e) }
-    setLoading(false)
+    try {
+      const res = await fetch(`${API_URL}/api/emotions/`)
+      if (res.ok) {
+        const json = await res.json()
+        setProvinceMasks(json.province_masks ?? [])
+        setIndividualMarks(json.individual_marks ?? [])
+      }
+    } catch (e) {
+      console.error('Failed to fetch map data:', e)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   const fetchWeather = useCallback(async (regName) => {
-    const coords = WEATHER_COORDS[regName]
-    const API_KEY = import.meta.env.VITE_WEATHER_API_KEY
-    if (!coords || !API_KEY || API_KEY === 'your_openweather_api_key') {
-      setWeather(false)
-      return
-    }
     setWeatherLoading(true)
     try {
-      const res = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?lat=${coords.lat}&lon=${coords.lon}&appid=${API_KEY}&units=metric&lang=kr`
-      )
+      // 키는 백엔드에만 — 서버 프록시(/api/weather/)로 현재 날씨를 받아온다.
+      const res = await fetch(`${API_URL}/api/weather/?region=${encodeURIComponent(regName)}`)
       const data = await res.json()
-      setWeather({
-        temp: Math.round(data.main.temp),
-        feels_like: Math.round(data.main.feels_like),
-        description: data.weather[0].description,
-        icon: data.weather[0].icon,
-        humidity: data.main.humidity,
-        wind: Math.round(data.wind.speed * 3.6),
-      })
+      setWeather(res.ok && data.available ? data : false)
     } catch {
       setWeather(false)
     } finally {
@@ -279,19 +247,18 @@ export default function MapPage() {
   // Fetch specific region stats
   const fetchRegionDetails = useCallback(async (regName) => {
     setLoadingRegion(true)
-    // TODO: 백엔드 연동 시 아래 주석 해제
-    // try {
-    //   const res = await fetch(`${API_URL}/api/emotions/region/${regName}/`)
-    //   if (res.ok) { const json = await res.json(); setRegionStats(json.stats); setRegionFeed(json.feed) }
-    // } catch (e) { console.error('Failed to fetch region details:', e) }
-    const marks = INDIVIDUAL_MARKS.filter(m => m.region === regName)
-    const province = PROVINCE_MARKS.find(p => p.label === regName)
-    const stats = { sunny: 0, cloudy: 0, rainy: 0, storm: 0 }
-    marks.forEach(m => { stats[m.emotion]++ })
-    if (province) stats[province.emotion] += 3
-    setRegionStats(stats)
-    setRegionFeed(marks.filter(m => m.comment))
-    setLoadingRegion(false)
+    try {
+      const res = await fetch(`${API_URL}/api/emotions/region/${encodeURIComponent(regName)}/`)
+      if (res.ok) {
+        const json = await res.json()
+        setRegionStats(json.stats)
+        setRegionFeed(json.feed)
+      }
+    } catch (e) {
+      console.error('Failed to fetch region details:', e)
+    } finally {
+      setLoadingRegion(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -300,7 +267,7 @@ export default function MapPage() {
 
   // 현재 신원(로그인/비로그인)의 오늘 마커를 지도에 표시. 신원이 바뀌면 다시 읽는다.
   useEffect(() => {
-    const raw = sessionStorage.getItem(entryKey())
+    const raw = localStorage.getItem(entryKey())
     if (!raw) { setUserMarks([]); return }
     try {
       const saved = JSON.parse(raw)
@@ -310,6 +277,7 @@ export default function MapPage() {
       if (saved.date === todayStr && saved.latitude && saved.longitude) {
         setUserMarks([{
           id: 'user-today',
+          serverId: saved.id,
           coordinates: [saved.longitude, saved.latitude],
           emotion: saved.emotion,
           comment: saved.comment || '',
@@ -334,11 +302,22 @@ export default function MapPage() {
     }
   }, [region, fetchRegionDetails, fetchWeather])
 
+  // 내 마커는 localStorage(userMarks)와 백엔드(individualMarks) 양쪽에 존재한다.
+  // 중복 표시를 막기 위해 백엔드 목록에서 내 항목을 제거한다(id 우선, 레거시는 좌표로 fallback).
+  const myMark = userMarks[0]
+  const visibleIndividualMarks = myMark
+    ? individualMarks.filter(m =>
+        myMark.serverId != null
+          ? m.id !== myMark.serverId
+          : !(m.coordinates[0] === myMark.coordinates[0] && m.coordinates[1] === myMark.coordinates[1])
+      )
+    : individualMarks
+
   return (
     <div className="main-page">
       <KoreaMap
         provinceMasks={provinceMasks}
-        individualMarks={individualMarks}
+        individualMarks={visibleIndividualMarks}
         userMarks={userMarks}
       />
       <SideMenu />
@@ -364,6 +343,7 @@ export default function MapPage() {
             if (entry.latitude && entry.longitude) {
               setUserMarks([{
                 id: 'user-today',
+                serverId: entry.id,
                 coordinates: [entry.longitude, entry.latitude],
                 emotion: entry.emotion,
                 comment: entry.comment || '',

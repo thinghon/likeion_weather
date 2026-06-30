@@ -39,7 +39,7 @@ export default function SideMenu() {
       await authFetch(`${API_URL}/api/auth/me/`, { method: 'DELETE' })
     } catch {}
     localStorage.removeItem('mwm_journal')      // 이 기기의 일기 삭제 (정책상 마커는 DB에 익명으로 보존)
-    sessionStorage.removeItem(entryKey())       // 탈퇴 계정의 지도 마커 슬롯만 제거
+    localStorage.removeItem(entryKey())       // 탈퇴 계정의 지도 마커 슬롯만 제거
     logout()
   }
 

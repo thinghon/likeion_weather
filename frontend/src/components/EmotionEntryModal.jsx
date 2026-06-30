@@ -90,7 +90,7 @@ export default function EmotionEntryModal({ onClose, onSubmitted }) {
     loadDominant()
 
     // 오늘 이미 제출했는지 확인 (현재 신원의 슬롯만 — 키가 사용자별로 분리됨)
-    const raw = sessionStorage.getItem(entryKey())
+    const raw = localStorage.getItem(entryKey())
     if (raw) {
       try {
         const saved = JSON.parse(raw)
@@ -139,6 +139,7 @@ export default function EmotionEntryModal({ onClose, onSubmitted }) {
       if (res?.ok) {
         const data = await res.json()
         entry = {
+          id: data.id,
           date: getToday(), emotion: data.emotion, comment: data.comment,
           latitude: finalLat, longitude: finalLng, region: data.region,
           timestamp: data.timestamp,
@@ -157,7 +158,7 @@ export default function EmotionEntryModal({ onClose, onSubmitted }) {
       }
     }
 
-    sessionStorage.setItem(entryKey(), JSON.stringify(entry))
+    localStorage.setItem(entryKey(), JSON.stringify(entry))
     try {
       const existing = localStorage.getItem('mwm_journal')
       let journal = existing ? JSON.parse(existing) : []
