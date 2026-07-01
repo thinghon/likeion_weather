@@ -10,12 +10,13 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# 로컬 .env 로드 — OPENWEATHERMAP_API_KEY 등 시크릿은 git에 올리지 않고 여기서 읽는다.
+# 로컬 .env 로드 — SECRET_KEY, OPENWEATHERMAP_API_KEY 등 시크릿은 git에 올리지 않고 여기서 읽는다.
 try:
     from dotenv import load_dotenv
     load_dotenv(BASE_DIR / ".env")
@@ -27,12 +28,16 @@ except ImportError:
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-d51b_f4_l78y$o##=9u*=)25p@14xv0^oiuc*2rm2oxes5ugsc"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "DJANGO_SECRET_KEY가 설정되지 않았어요. backend/.env.example을 참고해서 backend/.env에 추가해주세요."
+    )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if h.strip()]
 
 
 # Application definition
@@ -59,7 +64,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("DJANGO_CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 
 ROOT_URLCONF = "mysite.urls"

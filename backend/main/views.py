@@ -484,20 +484,36 @@ def region_history_api(request, region_name):
     return JsonResponse(history_data, safe=False)
 
 
+def _can_modify_entry(entry, auth_user, session_id):
+    """엔트리 소유자 확인: 로그인 유저가 남긴 기록은 본인만, 비로그인 기록은 session_id 일치할 때만 허용."""
+    if entry.user_id is not None:
+        return auth_user is not None and auth_user.id == entry.user_id
+    return bool(session_id) and session_id == entry.session_id
+
+
 @csrf_exempt
 def emotion_detail_api(request, entry_id):
     """
-    PATCH /api/emotions/<id>/ — 감정·코멘트 수정
-    DELETE /api/emotions/<id>/ — 기록 삭제
+    PATCH /api/emotions/<id>/ — 감정·코멘트 수정 (본인만)
+    DELETE /api/emotions/<id>/ — 기록 삭제 (본인만)
     """
     try:
         entry = EmotionEntry.objects.get(id=entry_id)
     except EmotionEntry.DoesNotExist:
         return JsonResponse({"error": "Not found"}, status=404)
 
+    auth_user = _get_user_from_request(request)
+
     if request.method == 'PATCH':
         try:
             data = json.loads(request.body)
+        except json.JSONDecodeError as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+        if not _can_modify_entry(entry, auth_user, data.get('session_id')):
+            return JsonResponse({"error": "권한이 없어요"}, status=403)
+
+        try:
             if 'emotion_type' in data:
                 if data['emotion_type'] not in ['sunny', 'cloudy', 'rainy', 'storm']:
                     return JsonResponse({"error": "Invalid emotion type"}, status=400)
@@ -512,10 +528,13 @@ def emotion_detail_api(request, entry_id):
                 "comment": entry.comment,
                 "timestamp": int(entry.created_at.timestamp() * 1000)
             })
-        except (json.JSONDecodeError, ValueError) as e:
+        except ValueError as e:
             return JsonResponse({"error": str(e)}, status=400)
 
     elif request.method == 'DELETE':
+        session_id = request.GET.get('session_id')
+        if not _can_modify_entry(entry, auth_user, session_id):
+            return JsonResponse({"error": "권한이 없어요"}, status=403)
         entry.delete()
         return JsonResponse({}, status=204)
 

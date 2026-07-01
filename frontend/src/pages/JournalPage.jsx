@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import SideMenu from '../components/SideMenu'
 import EmotionMarker from '../components/EmotionMarker'
 import { useAuth } from '../context/AuthContext'
+import { authFetch, getSessionId } from '../utils/api'
 import { EMOTIONS } from '../data/mockData'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -80,7 +81,9 @@ export default function JournalPage() {
 
   const handleDelete = async (log, idx) => {
     if (log.id) {
-      try { await fetch(`${API_URL}/api/emotions/${log.id}/`, { method: 'DELETE' }) } catch {}
+      try {
+        await authFetch(`${API_URL}/api/emotions/${log.id}/?session_id=${encodeURIComponent(getSessionId())}`, { method: 'DELETE' })
+      } catch {}
     }
     const updated = logs.filter((_, i) => i !== logs.indexOf(log))
     setLogs(updated)

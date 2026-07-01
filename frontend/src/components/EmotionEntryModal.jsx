@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import EmotionCard from './EmotionCard'
-import { authFetch, entryKey } from '../utils/api'
+import { authFetch, entryKey, getSessionId } from '../utils/api'
 import { useAuth } from '../context/AuthContext'
 import { EMOTIONS, PROVINCE_MARKS } from '../data/mockData'
 
@@ -22,15 +22,6 @@ function findNearestRegion(lat, lng) {
     if (dist < minDist) { minDist = dist; nearest = mark.label }
   }
   return nearest
-}
-
-function getSessionId() {
-  let id = localStorage.getItem('mwm_session_id')
-  if (!id) {
-    id = 'user_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now()
-    localStorage.setItem('mwm_session_id', id)
-  }
-  return id
 }
 
 export default function EmotionEntryModal({ onClose, onSubmitted }) {
