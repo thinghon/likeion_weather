@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Menu, X, Map, TrendingUp, BarChart2, BookOpen, HelpCircle, LogIn, LogOut } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -22,6 +22,18 @@ export default function SideMenu() {
   const navigate = useNavigate()
   const location = useLocation()
   const { isLoggedIn, user, logout } = useAuth()
+  const touchStartX = useRef(null)
+
+  // 왼쪽으로 스와이프하면 드로어 닫기
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX
+  }
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return
+    const dx = touchStartX.current - e.changedTouches[0].clientX
+    if (dx > 60) setOpen(false)
+    touchStartX.current = null
+  }
 
   const handleNav = (path) => {
     navigate(path)
@@ -60,7 +72,11 @@ export default function SideMenu() {
         <div className="drawer-overlay" onClick={() => { setOpen(false); setWithdrawConfirm(false) }} />
       )}
 
-      <aside className={`drawer ${open ? 'open' : ''}`}>
+      <aside
+        className={`drawer ${open ? 'open' : ''}`}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <div className="drawer-logo">
           <span className="drawer-logo-icon">🌤️</span>
           <span className="drawer-logo-text">감정 날씨 지도</span>

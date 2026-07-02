@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import EmotionCard from './EmotionCard'
@@ -38,9 +38,26 @@ export default function EmotionEntryModal({ onClose, onSubmitted }) {
   const [todayDominant, setTodayDominant] = useState('sunny')
   const [submittedToday, setSubmittedToday] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const modalRef = useRef(null)
+
+  // 모바일 키보드가 올라와도(visualViewport 축소) 바텀시트가 가려지지 않도록 높이 제한
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const handleResize = () => {
+      if (modalRef.current) modalRef.current.style.maxHeight = `${vv.height * 0.9}px`
+    }
+    handleResize()
+    vv.addEventListener('resize', handleResize)
+    return () => vv.removeEventListener('resize', handleResize)
+  }, [])
 
   const requestLocation = () => {
     if (!navigator.geolocation) { setLocState('denied'); return }
+    // HTTP(비보안 컨텍스트)에서는 모바일 브라우저가 위치 권한 프롬프트 자체를 띄우지 않고
+    // getCurrentPosition이 콜백 없이 무한 대기하는 경우가 있어, 아예 시도하지 않고 바로 수동 선택으로 넘어간다.
+    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
+    if (!isSecure) { setLocState('denied'); return }
     setLocState('loading')
     navigator.geolocation.getCurrentPosition(
       pos => {
@@ -50,7 +67,8 @@ export default function EmotionEntryModal({ onClose, onSubmitted }) {
         setRegion(findNearestRegion(lat, lng))
         setLocState('ok')
       },
-      () => setLocState('denied')
+      () => setLocState('denied'),
+      { timeout: 8000, maximumAge: 60000, enableHighAccuracy: false }
     )
   }
 
@@ -167,8 +185,9 @@ export default function EmotionEntryModal({ onClose, onSubmitted }) {
   const domEmo = EMOTIONS[todayDominant] || EMOTIONS.sunny
 
   return createPortal(
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="entry-modal-card" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay entry-modal-overlay" onClick={onClose}>
+      <div className="entry-modal-card" ref={modalRef} onClick={e => e.stopPropagation()}>
+        <div className="entry-modal-handle" />
 
         {/* 헤더 */}
         <div className="entry-modal-header">

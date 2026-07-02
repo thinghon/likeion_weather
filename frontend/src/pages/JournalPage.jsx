@@ -166,12 +166,21 @@ export default function JournalPage() {
                   >
                     <div className="cal-cell-top">
                       <span className="cal-day-num">{day}</span>
-                      {lastEntry && (() => {
+                      {lastEntry?.comment && (() => {
                         const emo = EMOTIONS[lastEntry.emotion] || EMOTIONS.sunny
                         return <emo.Icon size={32} color={emo.iconColor} strokeWidth={1.5} />
                       })()}
                     </div>
-                    <div style={{ flex: 1 }} />
+                    {lastEntry && !lastEntry.comment ? (
+                      <div className={`cal-day-icon-big${entries.length > 1 ? ' has-badge' : ''}`}>
+                        {(() => {
+                          const emo = EMOTIONS[lastEntry.emotion] || EMOTIONS.sunny
+                          return <emo.Icon size={30} color={emo.iconColor} strokeWidth={1.5} />
+                        })()}
+                      </div>
+                    ) : (
+                      <div style={{ flex: 1 }} />
+                    )}
                     {lastEntry?.comment && (
                       <p className="cal-day-comment">{lastEntry.comment}</p>
                     )}

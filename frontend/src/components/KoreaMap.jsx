@@ -128,10 +128,28 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks, se
   const [animated, setAnimated] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [popup, setPopup] = useState(null)
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 768px)').matches)
   const svgRef = useRef(null)
   const lastPos = useRef(null)
   const dragMoved = useRef(false)
   const mouseDownPos = useRef({ x: 0, y: 0 })
+  // 터치 제스처 상태 — 패닝(1손가락)/핀치 줌(2손가락) 판정에 사용
+  const touchStartPos = useRef(null)
+  const touchMoved = useRef(false)
+  const lastTouchDistance = useRef(null)
+  const pinchOccurred = useRef(false) // 이번 제스처에 핀치가 섞였는지 — 손가락이 2→1로 줄어도 탭으로 오인하지 않도록
+  // 네이티브(비-React) 터치 리스너가 최신 transform/마커 데이터를 읽을 수 있도록 매 렌더 동기화
+  const transformRef = useRef(transform)
+  transformRef.current = transform
+  const dataRef = useRef({ individualAll: [], markOffsets: [] })
+
+  // 모바일(≤768px)에서는 시·도 마커의 터치 판정 영역(rect)을 넓혀 탭하기 쉽게 한다.
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    const handler = (e) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   useEffect(() => {
     async function loadGeo() {
@@ -218,29 +236,172 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks, se
     lastPos.current = toSVGPt(e.clientX, e.clientY)
   }
 
-  // 시·도 마커 클릭 → 줌인 4배 + URL 이동(실제 데이터 드로어는 MapPage가 :region으로 연다)
-  const handleProvinceClick = (mark) => {
-    if (dragMoved.current) return
+  // 시·도 마커 선택 → 줌인 4배 + URL 이동(실제 데이터 드로어는 MapPage가 :region으로 연다)
+  const selectProvince = useCallback((mark) => {
     const [px, py] = projection(mark.coordinates)
     setAnimated(true)
     setPopup(null)
     setTransform({ x: W / 2 - px * 4, y: H / 2 - py * 4, scale: 4 })
     onSelectRegion(mark.label)
+  }, [onSelectRegion])
+
+  const handleProvinceClick = (mark) => {
+    if (dragMoved.current) return
+    selectProvince(mark)
   }
 
-  const handleIndividualClick = (mark, e, off = { dx: 0, dy: 0 }) => {
-    if (dragMoved.current) return
-    e.stopPropagation()
+  const openMarkPopup = useCallback((mark, off = { dx: 0, dy: 0 }) => {
     const svg = svgRef.current
+    if (!svg) return
+    const t = transformRef.current
     const [projX, projY] = projection(mark.coordinates)
     // 핀에 적용한 겹침 회피 오프셋만큼 팝업 위치도 보정
-    const viewBoxX = transform.x + projX * transform.scale + off.dx
-    const viewBoxY = transform.y + projY * transform.scale + off.dy
+    const viewBoxX = t.x + projX * t.scale + off.dx
+    const viewBoxY = t.y + projY * t.scale + off.dy
     const pt = svg.createSVGPoint()
     pt.x = viewBoxX; pt.y = viewBoxY
     const screenPt = pt.matrixTransform(svg.getScreenCTM())
     setPopup({ mark, x: screenPt.x, y: screenPt.y })
+  }, [])
+
+  const handleIndividualClick = (mark, e, off = { dx: 0, dy: 0 }) => {
+    if (dragMoved.current) return
+    e.stopPropagation()
+    openMarkPopup(mark, off)
   }
+
+  // 버튼/휠/핀치 공용 줌 — 화면 중심을 기준점으로 확대·축소
+  const zoomBy = useCallback((factor) => {
+    const svg = svgRef.current
+    if (!svg) return
+    setAnimated(true)
+    setPopup(null)
+    const rect = svg.getBoundingClientRect()
+    const { x: mx, y: my } = toSVGPt(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    setTransform(prev => {
+      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev.scale * factor))
+      if (newScale === prev.scale) return prev
+      const ratio = newScale / prev.scale
+      const rawX = mx - (mx - prev.x) * ratio
+      const rawY = my - (my - prev.y) * ratio
+      const { x, y } = clampPos(rawX, rawY, newScale)
+      return { x, y, scale: newScale }
+    })
+  }, [toSVGPt, clampPos])
+
+  const getTouchDistance = (touches) => {
+    const dx = touches[0].clientX - touches[1].clientX
+    const dy = touches[0].clientY - touches[1].clientY
+    return Math.hypot(dx, dy)
+  }
+
+  const getTouchCenter = (touches) => ({
+    x: (touches[0].clientX + touches[1].clientX) / 2,
+    y: (touches[0].clientY + touches[1].clientY) / 2,
+  })
+
+  const handleTouchStart = useCallback((e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault()
+      setAnimated(false)
+      setPopup(null)
+      touchStartPos.current = null
+      pinchOccurred.current = true
+      lastTouchDistance.current = getTouchDistance(e.touches)
+    } else if (e.touches.length === 1) {
+      setAnimated(false)
+      setPopup(null)
+      touchMoved.current = false
+      pinchOccurred.current = false
+      touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      lastPos.current = toSVGPt(e.touches[0].clientX, e.touches[0].clientY)
+    }
+  }, [toSVGPt])
+
+  const handleTouchMove = useCallback((e) => {
+    e.preventDefault()
+    if (e.touches.length === 2) {
+      // 핀치 줌 — 두 손가락 사이 거리 변화를 배율로 사용, 손가락 중심점을 기준점으로 고정
+      const newDistance = getTouchDistance(e.touches)
+      if (lastTouchDistance.current == null) { lastTouchDistance.current = newDistance; return }
+      const center = getTouchCenter(e.touches)
+      const { x: mx, y: my } = toSVGPt(center.x, center.y)
+      setTransform(prev => {
+        const scaleDelta = newDistance / lastTouchDistance.current
+        // 터치 이벤트가 드문드문 들어올 때 한 프레임에 과도하게 튀지 않도록 프레임당 변화폭 제한
+        const clampedDelta = Math.min(Math.max(scaleDelta, 0.9), 1.1)
+        const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev.scale * clampedDelta))
+        if (newScale === prev.scale) return prev
+        const ratio = newScale / prev.scale
+        const rawX = mx - (mx - prev.x) * ratio
+        const rawY = my - (my - prev.y) * ratio
+        const { x, y } = clampPos(rawX, rawY, newScale)
+        return { x, y, scale: newScale }
+      })
+      lastTouchDistance.current = newDistance
+    } else if (e.touches.length === 1) {
+      // 한 손가락 패닝
+      if (!lastPos.current) return
+      const p = toSVGPt(e.touches[0].clientX, e.touches[0].clientY)
+      const dx = p.x - lastPos.current.x
+      const dy = p.y - lastPos.current.y
+      if (touchStartPos.current) {
+        const sdx = e.touches[0].clientX - touchStartPos.current.x
+        const sdy = e.touches[0].clientY - touchStartPos.current.y
+        if (Math.hypot(sdx, sdy) > 8) touchMoved.current = true
+      }
+      lastPos.current = { x: p.x, y: p.y }
+      setTransform(prev => {
+        const { x, y } = clampPos(prev.x + dx, prev.y + dy, prev.scale)
+        return { ...prev, x, y }
+      })
+    }
+  }, [toSVGPt, clampPos])
+
+  // 손가락을 뗀 위치에서 실제 DOM 엘리먼트를 찾아 탭 대상을 판정한다(시·도 pill / 개인 마커).
+  // 지도 전체에 붙은 단일 네이티브 리스너로 처리하므로, 자식 요소의 onClick(마우스 전용)에 기대지 않는다.
+  const handleTouchEnd = useCallback((e) => {
+    if (e.touches.length < 2) lastTouchDistance.current = null
+    if (e.touches.length === 1) {
+      // 핀치 중 손가락 하나를 뗀 경우 — 남은 손가락 기준으로 패닝 좌표를 다시 잡아야
+      // 다음 touchmove에서 (핀치 시작 전 위치와의 차이만큼) 지도가 튀지 않는다.
+      lastPos.current = toSVGPt(e.touches[0].clientX, e.touches[0].clientY)
+      touchStartPos.current = null // 핀치의 연장이므로 탭 판정 대상에서 제외
+    }
+    if (e.touches.length === 0) {
+      lastPos.current = null
+      if (touchStartPos.current && !touchMoved.current && !pinchOccurred.current && e.changedTouches.length) {
+        const { clientX, clientY } = e.changedTouches[0]
+        const el = document.elementFromPoint(clientX, clientY)
+        const provinceEl = el?.closest('[data-province]')
+        const markEl = el?.closest('[data-mark-id]')
+        if (provinceEl) {
+          const mark = provinceMasks.find(m => m.label === provinceEl.dataset.province)
+          if (mark) selectProvince(mark)
+        } else if (markEl) {
+          const { individualAll, markOffsets } = dataRef.current
+          const idx = individualAll.findIndex(m => String(m.id) === markEl.dataset.markId)
+          if (idx !== -1) openMarkPopup(individualAll[idx], markOffsets[idx])
+        }
+      }
+      touchStartPos.current = null
+      touchMoved.current = false
+      pinchOccurred.current = false
+    }
+  }, [provinceMasks, selectProvince, openMarkPopup])
+
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    svg.addEventListener('touchstart', handleTouchStart, { passive: false })
+    svg.addEventListener('touchmove', handleTouchMove, { passive: false })
+    svg.addEventListener('touchend', handleTouchEnd, { passive: false })
+    return () => {
+      svg.removeEventListener('touchstart', handleTouchStart)
+      svg.removeEventListener('touchmove', handleTouchMove)
+      svg.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [handleTouchStart, handleTouchMove, handleTouchEnd])
 
   const panelOpen = !!selectedRegion
   const individualAll = [...individualMarks, ...userMarks]
@@ -283,6 +444,7 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks, se
       dy: cy + Math.sin(angle) * radius - projected[i].sy,
     }
   })
+  dataRef.current = { individualAll, markOffsets }
 
   return (
     <>
@@ -296,7 +458,7 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks, se
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
           preserveAspectRatio="xMidYMid meet"
-          style={{ width: '100%', height: '100%', display: 'block', cursor: isDragging ? 'grabbing' : 'grab' }}
+          style={{ width: '100%', height: '100%', display: 'block', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
           onMouseDown={handleMouseDown}
         >
           <rect width={W} height={H} style={{ fill: 'var(--map-sea)' }} />
@@ -338,7 +500,7 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks, se
               const iconColor = unknown ? '#9A8F80' : pin.icon
               const [pinW, pinH, iconSize] = [28, 36, 12]
               return (
-                <g key={mark.id} transform={`translate(${ox},${oy})`} style={{ cursor: 'pointer' }}
+                <g key={mark.id} data-mark-id={mark.id} transform={`translate(${ox},${oy})`} style={{ cursor: 'pointer' }}
                   onClick={e => { e.stopPropagation(); handleIndividualClick(mark, e, off) }}
                 >
                   <g transform={`scale(${1 / transform.scale})`}>
@@ -394,9 +556,11 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks, se
                       </div>
                     </div>
                   </foreignObject>
-                  {/* SVG rect 클릭 영역 — 변환과 무관하게 정확한 좌표 보장 */}
+                  {/* SVG rect 클릭 영역 — 변환과 무관하게 정확한 좌표 보장. 모바일은 터치하기 쉽도록 확대 */}
                   <rect
-                    x={-30} y={-16} width={80} height={32}
+                    data-province={mark.label}
+                    x={isMobile ? -40 : -30} y={isMobile ? -20 : -16}
+                    width={isMobile ? 100 : 80} height={isMobile ? 40 : 32}
                     fill="transparent"
                     style={{ cursor: 'pointer' }}
                     onMouseDown={e => {
@@ -418,6 +582,11 @@ export default function KoreaMap({ provinceMasks, individualMarks, userMarks, se
         </svg>
 
         {popup && <MarkPopup popup={popup} onClose={() => setPopup(null)} />}
+
+        <div className="zoom-controls" onClick={e => e.stopPropagation()}>
+          <button type="button" className="zoom-btn" onClick={() => zoomBy(1.4)} aria-label="확대">+</button>
+          <button type="button" className="zoom-btn" onClick={() => zoomBy(1 / 1.4)} aria-label="축소">−</button>
+        </div>
       </div>
     </>
   )

@@ -32,6 +32,7 @@ body {
   overflow: hidden;
   background: #fffbf5;
   color: #1a0e00;
+  word-break: keep-all; /* 한글 단어 중간(예: "날 씨")에서 줄바꿈되는 것 방지 */
 }
 
 button {
@@ -65,6 +66,40 @@ input {
   height: 100%;
   background: var(--map-sea);
   overflow: hidden;
+  touch-action: none;
+}
+
+/* ── Zoom Controls ────────────────────────────────── */
+.zoom-controls {
+  position: fixed;
+  /* FAB(+, right:24 width:56)과 가로 중심이 맞도록: 24 + 56/2 - 36/2(zoom-btn 폭) */
+  right: 34px;
+  bottom: 108px; /* FAB 상단(40+56=96px) 바로 위, 12px 간격 */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 20;
+}
+
+.zoom-btn {
+  width: 36px;
+  height: 36px;
+  background: #fffbf7;
+  border: 1px solid #f0eae2;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #f97316;
+  transition: background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.zoom-btn:active {
+  background: #fed7aa;
 }
 
 /* ── Mark Popup ───────────────────────────────────── */
@@ -142,8 +177,8 @@ input {
 /* ── Menu FAB (hamburger) ─────────────────────────── */
 .menu-fab {
   position: fixed;
-  top: 20px;
-  left: 20px;
+  top: 24px;
+  left: 24px;
   width: 52px;
   height: 52px;
   border-radius: 50%;
@@ -360,8 +395,8 @@ input {
 /* ── FAB (+) Button ───────────────────────────────── */
 .fab {
   position: fixed;
-  bottom: 32px;
-  right: 32px;
+  bottom: 40px;
+  right: 24px;
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -925,6 +960,18 @@ input {
   background: #d9700e;
   color: white;
   font-weight: 800;
+}
+
+.cal-day-icon-big {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* +N 배지(우하단 절대 위치)가 있을 때는 그만큼 위로 띄워서 아이콘과 안 겹치게 */
+.cal-day-icon-big.has-badge {
+  padding-bottom: 18px;
 }
 
 .cal-day-comment {
@@ -1834,6 +1881,49 @@ input {
   transform: translateX(0);
 }
 
+.region-drawer-handle {
+  display: none;
+}
+
+.region-drawer-overlay {
+  display: none;
+}
+
+.region-drawer-header-fixed {
+  flex-shrink: 0;
+  padding: 24px 24px 12px;
+  border-bottom: 1px solid #F0EAE2;
+}
+
+.region-drawer-inner {
+  padding: 0 24px 24px;
+}
+
+.region-drawer-title-text {
+  font-size: 22px;
+}
+
+.feed-card {
+  padding: 12px 14px;
+}
+
+.weather-compare-row {
+  display: flex;
+  align-items: flex-start;
+}
+
+.weather-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 0 8px;
+  background: #f0eae2;
+}
+
+.donut-svg {
+  width: 110px;
+  height: 110px;
+}
+
 .region-drawer-header {
   display: flex;
   justify-content: space-between;
@@ -2178,6 +2268,10 @@ input {
 }
 
 /* ── Emotion Entry Modal ──────────────────────────── */
+.entry-modal-handle {
+  display: none;
+}
+
 .entry-modal-card {
   background: white;
   border-radius: 24px;
@@ -3941,4 +4035,270 @@ input {
 
 .login-nudge-close:hover {
   color: #fff7f0;
+}
+
+/* ── Map Page: Mobile Responsive ─────────────────────
+   지도 메인 페이지 / 지역 상세 패널 반응형(모바일 ≤768px) */
+@media (max-width: 768px) {
+  .map-container {
+    width: 100vw !important;
+  }
+
+  .menu-fab {
+    top: 16px;
+    left: 16px;
+  }
+
+  .fab {
+    bottom: 24px;
+    right: 16px;
+  }
+
+  .zoom-controls {
+    /* 모바일 FAB(right:16 width:56)과 가로 중심이 맞도록: 16 + 56/2 - 48/2(zoom-btn 폭) */
+    right: 20px;
+    bottom: 90px; /* 모바일 FAB 상단(24+56=80px) 바로 위, 10px 간격 */
+    gap: 6px;
+  }
+
+  .zoom-btn {
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
+    border-radius: 14px;
+  }
+
+  /* 지역 상세 패널: 우측 슬라이드인 → 하단 슬라이드업 */
+  .region-drawer {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 60vh;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 32px rgba(217, 112, 14, 0.14);
+    transform: translateY(100%);
+  }
+
+  .region-drawer.open {
+    transform: translateY(0);
+  }
+
+  .region-drawer-handle {
+    display: block;
+    flex-shrink: 0;
+    width: 40px;
+    height: 4px;
+    background: #d4c8be;
+    border-radius: 2px;
+    margin: 12px auto 0;
+  }
+
+  .region-drawer-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 39;
+    animation: fadeIn 0.2s ease;
+  }
+
+  .region-drawer-header-fixed {
+    padding: 16px 16px 8px;
+  }
+
+  .region-drawer-inner {
+    padding: 0 16px 16px;
+  }
+
+  .region-drawer-title-text {
+    font-size: 18px;
+  }
+
+  .feed-card {
+    padding: 10px 12px;
+  }
+
+  .donut-svg {
+    width: 80px;
+    height: 80px;
+  }
+}
+
+/* ── Emotion Entry Modal / Auth Pages / Side Drawer: Mobile Responsive ── */
+@media (max-width: 768px) {
+  /* 감정 입력 모달: 중앙 모달 → 하단 바텀시트 */
+  .entry-modal-overlay {
+    align-items: flex-end;
+  }
+
+  .entry-modal-card {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 20px 20px 0 0;
+    padding: 20px 16px 32px;
+    max-height: 90vh;
+  }
+
+  .entry-modal-handle {
+    display: block;
+    flex-shrink: 0;
+    width: 40px;
+    height: 4px;
+    background: #d4c8be;
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+
+  .emotion-card {
+    padding: 16px 12px;
+  }
+
+  .emotion-card-icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .entry-modal-sub {
+    font-size: 12px;
+  }
+
+  .comment-input {
+    font-size: 16px; /* iOS 자동 줌 방지 */
+  }
+
+  .entry-submit-btn {
+    font-size: 16px;
+  }
+
+  /* 로그인/회원가입 페이지: 중앙 카드 → 전체 화면 */
+  .auth-page {
+    align-items: flex-start;
+    padding: 0;
+  }
+
+  .auth-card {
+    width: 100%;
+    min-height: 100vh;
+    border-radius: 0;
+    padding: 48px 24px 32px;
+    box-shadow: none;
+    border: none;
+  }
+
+  .auth-logo {
+    margin-top: 24px;
+    margin-bottom: 32px;
+  }
+
+  .auth-input {
+    font-size: 16px; /* iOS 자동 줌 방지 */
+    padding: 14px 16px;
+    height: 52px;
+  }
+
+  .auth-submit {
+    height: 52px;
+    font-size: 16px;
+    border-radius: 14px;
+  }
+
+  /* 사이드 메뉴 드로어 */
+  .drawer {
+    width: 80%;
+    max-width: 300px;
+  }
+
+  .drawer-item {
+    padding: 14px 16px;
+    font-size: 15px;
+    min-height: 52px;
+  }
+
+  .drawer-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .drawer-logo {
+    padding: 20px 16px 16px;
+  }
+
+  .drawer-logo-text {
+    font-size: 16px;
+  }
+
+  .drawer-bottom {
+    padding-bottom: 32px; /* 하단 홈바 여백 */
+  }
+}
+
+/* ── 그 외 페이지(비교/인사이트/일기장 등) 공용: Mobile Responsive ── */
+@media (max-width: 768px) {
+  .page-content {
+    padding: 88px 16px 40px;
+  }
+
+  /* 페이지 헤더: 제목 + 검색창/컨트롤이 나란히 있던 걸 세로로 쌓음 */
+  .page-header,
+  .ni-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-title,
+  .ni-title,
+  .cal-title {
+    font-size: 22px;
+  }
+
+  .search-input {
+    width: 100%;
+  }
+
+  /* 감정 인사이트: 좌우 2열 → 1열 (고정폭 360px 컬럼이 화면 밖으로 잘려나가던 문제) */
+  .ni-body {
+    grid-template-columns: 1fr;
+  }
+
+  /* 감정 일기장: 달력 + 사이드바 좌우 배치 → 세로 배치 (사이드바 고정폭 때문에 달력이 짜부러지던 문제) */
+  .journal-cal-page {
+    flex-direction: column;
+    align-items: stretch; /* align-items:flex-start(데스크탑 값)가 남아있으면 세로 배치에서 폭이 콘텐츠 크기로 줄어 왼쪽으로 쏠려 보임 */
+    padding: 80px 16px 40px;
+  }
+
+  .journal-cal-sidebar {
+    width: 100%;
+    position: static;
+  }
+
+  .cal-cell {
+    min-height: 74px;
+    padding: 6px 6px 5px;
+  }
+
+  .cal-day-num {
+    font-size: 10px;
+    width: 18px;
+    height: 18px;
+  }
+
+  .cal-day-icon-big svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* 로그인 유도 배너: nowrap 고정폭이라 좁은 화면에서 옆으로 잘려나가던 문제 */
+  .login-nudge {
+    left: 16px;
+    right: 16px;
+    transform: none;
+    bottom: 90px;
+  }
+
+  .login-nudge-content {
+    white-space: normal;
+  }
 }

@@ -92,7 +92,7 @@ function WeatherCompareCard({ weather, weatherLoading, regionStats }) {
   return (
     <div style={cardBase}>
       <p style={{ fontSize: '13px', fontWeight: 700, color: '#4A3010', marginBottom: '12px' }}>실제 날씨 vs 감정 날씨</p>
-      <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+      <div className="weather-compare-row">
         {/* 실제 날씨 */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
           <p style={{ fontSize: '11px', color: '#78716C', marginBottom: '4px' }}>실제 날씨</p>
@@ -105,7 +105,7 @@ function WeatherCompareCard({ weather, weatherLoading, regionStats }) {
           </div>
         </div>
         {/* 구분선 */}
-        <div style={{ width: 1, background: '#F0EAE2', alignSelf: 'stretch', margin: '0 8px' }} />
+        <div className="weather-divider" />
         {/* 감정 날씨 */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
           <p style={{ fontSize: '11px', color: '#78716C', marginBottom: '4px' }}>감정 날씨</p>
@@ -149,7 +149,7 @@ function DonutChart({ stats }) {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '4px' }}>
-      <svg width="110" height="110" viewBox="0 0 110 110" style={{ flexShrink: 0 }}>
+      <svg className="donut-svg" viewBox="0 0 110 110" style={{ flexShrink: 0 }}>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="#F0EAE2" strokeWidth="11" />
         {segments.map(({ key, pct, offset }) => (
           <circle
@@ -378,32 +378,37 @@ export default function MapPage() {
       )}
 
       {/* Slide-over Drawer for Region Detail View — 크림톤 상세 패널(실제 데이터) */}
+      {region && <div className="region-drawer-overlay" onClick={() => navigate('/map')} />}
       <aside className={`region-drawer ${region ? 'open' : ''}`} style={{ background: '#FFFBF7' }}>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px', boxSizing: 'border-box' }}>
+        <div className="region-drawer-handle" />
+
+        {/* 헤더 — 스크롤돼도 항상 보이게 고정(닫기 버튼이 콘텐츠와 같이 스크롤되어 사라지던 문제) */}
+        <div className="region-drawer-header-fixed">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+            <h2 className="region-drawer-title-text" style={{ fontWeight: 700, color: '#1A0E00' }}>{region}</h2>
+            <button onClick={() => navigate('/map')} style={{ color: '#9A7040', padding: '4px', borderRadius: '6px', flexShrink: 0, marginTop: '2px' }}>
+              <X size={20} />
+            </button>
+          </div>
+          {dominantEmo ? (
+            <p style={{ fontSize: '13px', color: '#9A7040', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+              오늘 {statTotal}명 참여 ·&nbsp;
+              <dominantEmo.Icon size={14} color={dominantEmo.iconColor} strokeWidth={1.5} />
+              <span style={{ color: dominantEmo.iconColor, fontWeight: 600 }}>{dominantEmo.label}</span>
+              이 대세
+            </p>
+          ) : (
+            <p style={{ fontSize: '13px', color: '#9A7040' }}>실시간 사람들의 날씨 상태</p>
+          )}
+        </div>
+
+        <div className="region-drawer-inner" style={{ flex: 1, minHeight: 0, overflowY: 'auto', boxSizing: 'border-box' }}>
           {loadingRegion ? (
             <div className="region-loading">
               <span className="location-dot loading" /> 정보를 불러오는 중...
             </div>
           ) : (
             <>
-              {/* 헤더 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1A0E00' }}>{region}</h2>
-                <button onClick={() => navigate('/map')} style={{ color: '#9A7040', padding: '4px', borderRadius: '6px', flexShrink: 0, marginTop: '2px' }}>
-                  <X size={20} />
-                </button>
-              </div>
-              {dominantEmo ? (
-                <p style={{ fontSize: '13px', color: '#9A7040', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                  오늘 {statTotal}명 참여 ·&nbsp;
-                  <dominantEmo.Icon size={14} color={dominantEmo.iconColor} strokeWidth={1.5} />
-                  <span style={{ color: dominantEmo.iconColor, fontWeight: 600 }}>{dominantEmo.label}</span>
-                  이 대세
-                </p>
-              ) : (
-                <p style={{ fontSize: '13px', color: '#9A7040', marginBottom: '8px' }}>실시간 사람들의 날씨 상태</p>
-              )}
-
               {/* 실제 날씨 vs 감정 날씨 비교 카드 */}
               <WeatherCompareCard weather={weather} weatherLoading={weatherLoading} regionStats={regionStats} />
 
@@ -434,10 +439,10 @@ export default function MapPage() {
                       const pin = PIN_COLORS[item.emotion] || PIN_COLORS.sunny
                       const isUser = myMark && myMark.serverId != null && item.id === myMark.serverId
                       return (
-                        <div key={idx} style={{
+                        <div key={idx} className="feed-card" style={{
                           background: isUser ? emo.color : '#FFFFFF',
                           border: `1px solid ${isUser ? emo.border : '#F0EAE2'}`,
-                          borderRadius: '12px', padding: '12px 14px', marginBottom: '8px',
+                          borderRadius: '12px', marginBottom: '8px',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', marginBottom: '7px' }}>
                             <div style={{ width: 18, height: 18, borderRadius: '50%', background: pin.fill, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '6px', flexShrink: 0 }}>
