@@ -36,6 +36,20 @@ PROVINCE_DEFAULTS = [
 
 KST = zoneinfo.ZoneInfo("Asia/Seoul")
 
+def kst_day_range(day=None):
+    """주어진 KST 날짜(기본: 오늘)의 자정~자정 UTC 경계를 반환한다.
+
+    settings.TIME_ZONE이 'UTC'라 `created_at__date=<KST 날짜>` 같은 필터는
+    DB에서 UTC 기준으로 날짜를 추출해 비교하므로, KST 자정~09시(UTC 15~24시) 구간에는
+    '오늘(KST)' 레코드가 통째로 빠지는 버그가 있었다. 항상 명시적 datetime 범위로 비교한다.
+    """
+    if day is None:
+        day = datetime.now(KST).date()
+    start = datetime(day.year, day.month, day.day, tzinfo=KST)
+    end = start + timedelta(days=1)
+    return day, start, end
+
+
 def find_nearest_province(lat, lng):
     min_dist = float('inf')
     nearest = PROVINCE_DEFAULTS[0]
@@ -142,10 +156,10 @@ def emotions_api(request):
     """
     
     if request.method == 'GET':
-        today_date = datetime.now(KST).date()
-        
+        today_date, day_start, day_end = kst_day_range()
+
         # Load all entries for today
-        emotions_today = EmotionEntry.objects.filter(created_at__date=today_date).order_by('-created_at')
+        emotions_today = EmotionEntry.objects.filter(created_at__gte=day_start, created_at__lt=day_end).order_by('-created_at')
         
         # 1. Individual marks (today's entries)
         individual_marks = []
@@ -229,16 +243,18 @@ def emotions_api(request):
                         break
 
             # Check 1 limit per day per user (reset at midnight KST)
-            today_date = datetime.now(KST).date()
+            today_date, day_start, day_end = kst_day_range()
             if auth_user:
                 existing_entry = EmotionEntry.objects.filter(
                     user=auth_user,
-                    created_at__date=today_date
+                    created_at__gte=day_start,
+                    created_at__lt=day_end
                 ).first()
             else:
                 existing_entry = EmotionEntry.objects.filter(
                     session_id=session_id,
-                    created_at__date=today_date
+                    created_at__gte=day_start,
+                    created_at__lt=day_end
                 ).first()
 
             if existing_entry:
@@ -291,8 +307,8 @@ def region_detail_api(request, region_name):
         return JsonResponse({"error": "Region not found"}, status=404)
         
     # 오늘(KST) 기록만 — 지도 시·도 마커(province_masks)와 동일 기준으로 집계
-    today_date = datetime.now(KST).date()
-    entries = EmotionEntry.objects.filter(region=region_name, created_at__date=today_date).order_by('-created_at')
+    today_date, day_start, day_end = kst_day_range()
+    entries = EmotionEntry.objects.filter(region=region_name, created_at__gte=day_start, created_at__lt=day_end).order_by('-created_at')
     
     # Calculate counts (distribution stats)
     counts = {
@@ -327,20 +343,20 @@ def weather_compare_api(request):
     GET /api/emotions/compare/
     Compare OpenWeatherMap current weather vs daily dominant emotion weather for each region.
     """
-    today_date = datetime.now(KST).date()
-    
+    today_date, day_start, day_end = kst_day_range()
+
     comparison_data = []
-    
+
     for p in PROVINCE_DEFAULTS:
         region = p["name"]
-        
+
         # 1. Fetch current weather (with caching/fallback inside fetch_real_weather)
         real_info = fetch_real_weather(region)
         real_w = real_info["weather"]
         real_t = real_info["temp"]
-        
+
         # 2. Fetch dominant emotion for today
-        today_entries = EmotionEntry.objects.filter(region=region, created_at__date=today_date)
+        today_entries = EmotionEntry.objects.filter(region=region, created_at__gte=day_start, created_at__lt=day_end)
         if today_entries.exists():
             counter = Counter([e.emotion_type for e in today_entries])
             dominant = counter.most_common(1)[0][0]
